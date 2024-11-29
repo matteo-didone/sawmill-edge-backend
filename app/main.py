@@ -6,7 +6,16 @@ async def main():
     endpoint = "opc.tcp://192.168.100.53:4841/freeopcua/server/"
     
     # NodeId del nodo da leggere
-    node_id = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "pieces"
+    node_id = {}
+
+    node_id["machine_state"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "pieces"
+    node_id["active"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "active"
+    node_id["working"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "working"
+    node_id["stopped"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "stopped"
+    node_id["alarm"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "alarm"
+    node_id["error"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "error"
+    node_id["cutting_speed"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "cutting_speed"
+    node_id["power_drain"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "power_drain"
     
     previous_value = None  # Per tenere traccia dell'ultimo valore letto
     
