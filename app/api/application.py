@@ -1,8 +1,7 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
-
 from .routes import router
 from ..core.config import get_settings
 from ..core.sawmill_manager import SawmillManager
@@ -14,16 +13,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Gestisce il ciclo di vita del SawmillManager."""
     settings = get_settings()
-
     # Inizializza SawmillManager
     sawmill_manager = SawmillManager()
     app.state.sawmill_manager = sawmill_manager  # Attach to FastAPI state
-
     try:
         # Avvia i servizi
         await sawmill_manager.start()
@@ -36,7 +32,6 @@ async def lifespan(app: FastAPI):
         # Arresta il SawmillManager
         await sawmill_manager.stop()
         logger.info("SawmillManager arrestato con successo")
-
 
 # Crea l'applicazione FastAPI
 app = FastAPI(
@@ -57,11 +52,3 @@ app.add_middleware(
 
 # Includi le rotte
 app.include_router(router, prefix=get_settings().API_PREFIX.rstrip("/"))
-
-
-# Dipendenza per accedere a SawmillManager
-async def get_sawmill_manager(request: Request) -> SawmillManager:
-    manager = request.app.state.sawmill_manager
-    if manager is None:
-        raise RuntimeError("SawmillManager not initialized")
-    return manager

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from typing import List
 from datetime import datetime
 from ..core.sawmill_manager import SawmillManager
+from .dependencies import get_sawmill_manager  # Importa da dependencies invece che da application
 from .models import (
     MachineStatus,
     MachineCommand,
@@ -14,13 +15,6 @@ from .models import (
 )
 
 router = APIRouter()
-
-# Dependency
-async def get_sawmill_manager() -> SawmillManager:
-    from .application import sawmill_manager
-    if sawmill_manager is None:
-        raise RuntimeError("SawmillManager not initialized")
-    return sawmill_manager
 
 @router.get("/status", response_model=MachineStatus)
 async def get_machine_status(
