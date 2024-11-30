@@ -90,11 +90,19 @@ class OPCUAClient:
             return False
 
     async def update_machine_data(self):
-        """Update all machine data at once."""
         for node_name, node_id in self.nodes.items():
             value = await self.read_node(node_id)
             if value is not None:
-                self.machine_data[node_name] = value
+                # Convert to appropriate types
+                if node_name in ['is_active', 'is_working', 'is_stopped', 'has_alarm', 'has_error']:
+                    # Convert to boolean
+                    self.machine_data[node_name] = bool(value)
+                elif node_name in ['pieces_count']:
+                    # Convert to integer
+                    self.machine_data[node_name] = int(value)
+                else:
+                    # Assume float for other parameters
+                    self.machine_data[node_name] = float(value)
 
     async def monitor_nodes(self):
         """Continuously monitor changes in nodes."""
