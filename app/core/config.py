@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     # API Configuration
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
-    API_PREFIX: str = "/api/v1"  # Valore di default per evitare errori
+    API_PREFIX: str = "/api/v1/"  # Valore di default per evitare errori
     
     # Logging Configuration
     LOG_LEVEL: str = "INFO"

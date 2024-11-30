@@ -1,20 +1,19 @@
-# app/core/main.py
-
-import asyncio
 import uvicorn
-from app.api.application import app
 from core.config import get_settings
+from app.api.application import app
 
 def main():
     """Main entry point for the application."""
+    # Carica le configurazioni dall'ambiente
     settings = get_settings()
     
+    # Avvia il server Uvicorn
     uvicorn.run(
-        "api.application:app",
+        "app.api.application:app",  # Percorso corretto al file e all'istanza FastAPI
         host=settings.API_HOST,
         port=settings.API_PORT,
-        reload=True,  # Disable in production
-        log_level=settings.LOG_LEVEL.lower()
+        reload=True,  # Mantieni reload abilitato in fase di sviluppo
+        log_level=settings.LOG_LEVEL.lower()  # Configura il livello di log
     )
 
 if __name__ == "__main__":

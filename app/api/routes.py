@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Request, HTTPException, Depends
 from typing import List
 from datetime import datetime
 from ..core.sawmill_manager import SawmillManager
@@ -72,7 +72,7 @@ async def acknowledge_alarm(
         message=f"Alarm {alarm_code} acknowledged"
     )
 
-# New Metrics Endpoints
+# Metrics Endpoints
 @router.get("/metrics", response_model=ProcessedMetricsResponse)
 async def get_metrics(
     sawmill: SawmillManager = Depends(get_sawmill_manager)
@@ -101,3 +101,21 @@ async def reset_metrics(
         timestamp=datetime.now(),
         message="Metrics reset successfully"
     )
+
+# Config Endpoint
+@router.get("/config", response_model=dict)
+async def get_config(request: Request):
+    """
+    Get the current configuration of the system.
+    """
+    from app.core.config import get_settings
+    settings = get_settings()
+    return {
+        "opcua_server_url": settings.OPCUA_SERVER_URL,
+        "mqtt_broker_host": settings.MQTT_BROKER_HOST,
+        "mqtt_broker_port": settings.MQTT_BROKER_PORT,
+        "api_host": settings.API_HOST,
+        "api_port": settings.API_PORT,
+        "monitoring_interval": settings.MONITORING_INTERVAL,
+        "command_timeout": settings.COMMAND_TIMEOUT,
+    }

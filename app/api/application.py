@@ -1,6 +1,4 @@
-# app/api/application.py
-
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
@@ -9,59 +7,61 @@ from .routes import router
 from ..core.config import get_settings
 from ..core.sawmill_manager import SawmillManager
 
-# Configure logging
+# Configurazione logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Global SawmillManager instance
-sawmill_manager: SawmillManager = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Manage the lifecycle of the SawmillManager."""
-    global sawmill_manager
-    
+    """Gestisce il ciclo di vita del SawmillManager."""
     settings = get_settings()
-    
-    # Initialize SawmillManager
+
+    # Inizializza SawmillManager
     sawmill_manager = SawmillManager()
+    app.state.sawmill_manager = sawmill_manager  # Attach to FastAPI state
 
     try:
-        # Start services
+        # Avvia i servizi
         await sawmill_manager.start()
-        logger.info("SawmillManager started successfully")
+        logger.info("SawmillManager avviato con successo")
         yield
+    except Exception as e:
+        logger.error(f"Errore durante il ciclo di vita dell'applicazione: {e}")
+        raise RuntimeError("Errore di inizializzazione del server")
     finally:
-        # Cleanup
-        if sawmill_manager:
-            await sawmill_manager.stop()
-            logger.info("SawmillManager stopped successfully")
+        # Arresta il SawmillManager
+        await sawmill_manager.stop()
+        logger.info("SawmillManager arrestato con successo")
 
-# Create FastAPI application
+
+# Crea l'applicazione FastAPI
 app = FastAPI(
     title="Sawmill Edge API",
-    description="API for controlling and monitoring industrial sawmill",
+    description="API per il controllo e il monitoraggio di una segheria industriale",
     version="1.0.0",
     lifespan=lifespan
 )
 
-# Add CORS middleware
+# Middleware CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origins=["*"],  # Sostituisci con origini specifiche in produzione
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include routes
-app.include_router(router, prefix=get_settings().API_PREFIX)
+# Includi le rotte
+app.include_router(router, prefix=get_settings().API_PREFIX.rstrip("/"))
 
-# Dependency for routes
-async def get_sawmill_manager() -> SawmillManager:
-    if sawmill_manager is None:
+
+# Dipendenza per accedere a SawmillManager
+async def get_sawmill_manager(request: Request) -> SawmillManager:
+    manager = request.app.state.sawmill_manager
+    if manager is None:
         raise RuntimeError("SawmillManager not initialized")
-    return sawmill_manager
+    return manager
