@@ -1,32 +1,26 @@
-# app/api/routes.py
-
 from fastapi import APIRouter, HTTPException, Depends
-from typing import List, Dict, Any, Optional
-from pydantic import BaseModel
+from typing import List
 from datetime import datetime
-
 from ..core.sawmill_manager import SawmillManager
-from .models import MachineStatus, MachineCommand, AlarmNotification
+from .models import (
+    MachineStatus,
+    MachineCommand,
+    AlarmNotification,
+    CommandRequest,
+    CommandResponse,
+    AlarmAcknowledgeRequest,
+    ProcessedMetricsResponse,
+    TimeWindowRequest
+)
 
 router = APIRouter()
 
-class CommandRequest(BaseModel):
-    command: str
-    params: Optional[Dict[str, Any]] = None
-
-class CommandResponse(BaseModel):
-    success: bool
-    timestamp: datetime
-    message: Optional[str] = None
-
-class AlarmAcknowledgeRequest(BaseModel):
-    alarm_code: str
-
 # Dependency
 async def get_sawmill_manager() -> SawmillManager:
-    # In a real application, you would get this from your application state
-    # This is just a placeholder
-    raise NotImplementedError("Implement proper dependency injection")
+    from .application import sawmill_manager
+    if sawmill_manager is None:
+        raise RuntimeError("SawmillManager not initialized")
+    return sawmill_manager
 
 @router.get("/status", response_model=MachineStatus)
 async def get_machine_status(
@@ -46,13 +40,11 @@ async def execute_command(
             command_request.command,
             command_request.params
         )
-        
         return CommandResponse(
             success=success,
             timestamp=datetime.now(),
             message="Command executed successfully" if success else "Command failed"
         )
-        
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -72,12 +64,40 @@ async def acknowledge_alarm(
 ):
     """Acknowledge an alarm."""
     success = await sawmill.acknowledge_alarm(alarm_code)
-    
     if not success:
         raise HTTPException(status_code=404, detail=f"Alarm {alarm_code} not found")
-        
     return CommandResponse(
         success=True,
         timestamp=datetime.now(),
         message=f"Alarm {alarm_code} acknowledged"
+    )
+
+# New Metrics Endpoints
+@router.get("/metrics", response_model=ProcessedMetricsResponse)
+async def get_metrics(
+    sawmill: SawmillManager = Depends(get_sawmill_manager)
+):
+    """Get current processed metrics."""
+    metrics = sawmill.get_metrics()
+    return ProcessedMetricsResponse(
+        average_consumption=metrics.average_consumption,
+        average_cutting_speed=metrics.average_cutting_speed,
+        efficiency_rate=metrics.efficiency_rate,
+        pieces_per_hour=metrics.pieces_per_hour,
+        total_pieces=metrics.total_pieces,
+        uptime_percentage=metrics.uptime_percentage,
+        active_time=str(metrics.active_time),
+        timestamp=datetime.now()
+    )
+
+@router.post("/metrics/reset", response_model=CommandResponse)
+async def reset_metrics(
+    sawmill: SawmillManager = Depends(get_sawmill_manager)
+):
+    """Reset all metrics calculations."""
+    await sawmill.reset_metrics()
+    return CommandResponse(
+        success=True,
+        timestamp=datetime.now(),
+        message="Metrics reset successfully"
     )

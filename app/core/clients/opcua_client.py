@@ -37,6 +37,7 @@ class OPCUAClient:
     async def connect(self) -> bool:
         """Connect to the OPC UA server."""
         try:
+            self.logger.info(f"Connecting to OPC UA server at {self.url}")
             self.client = Client(url=self.url)
             await self.client.connect()
             self.logger.info("Connected to OPC UA server")

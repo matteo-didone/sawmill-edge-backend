@@ -1,0 +1,23 @@
+parameters:
+  speed_limit:
+    type: "opcua"
+    node_id: "ns=2;s=SpeedLimit"
+    data_type: "float"
+    description: "Maximum speed limit"
+    unit: "km/h"
+    monitor: true
+    publish: true
+  temperature_threshold:
+    type: "calculated"
+    data_type: "int"
+    default_value: 50
+    description: "Threshold temperature"
+    monitor: true
+    publish: false
+  pressure_limit:
+    type: "opcua"
+    node_id: "ns=2;s=PressureLimit"
+    data_type: "float"
+    unit: "bar"
+    monitor: false
+    publish: true

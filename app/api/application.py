@@ -27,12 +27,8 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     
     # Initialize SawmillManager
-    sawmill_manager = SawmillManager(
-        opcua_url=settings.OPCUA_SERVER_URL,
-        mqtt_broker=settings.MQTT_BROKER_HOST,
-        mqtt_port=settings.MQTT_BROKER_PORT
-    )
-    
+    sawmill_manager = SawmillManager()
+
     try:
         # Start services
         await sawmill_manager.start()

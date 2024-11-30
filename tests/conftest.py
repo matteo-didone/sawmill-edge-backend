@@ -44,7 +44,7 @@ async def mock_mqtt_client():
 
 @pytest_asyncio.fixture
 async def sawmill_manager(mock_opcua_client, mock_mqtt_client):
-    manager = SawmillManager("opc.tcp://localhost:4840", "localhost", 1883)
+    manager = SawmillManager("opc.tcp://MacBookPro.homenet.telecomitalia.it:53530/OPCUA/SimulationServer", "localhost", 1883)
     manager.opcua_client = mock_opcua_client
     manager.mqtt_client = mock_mqtt_client
     manager.command_handler = CommandHandler(mock_opcua_client)

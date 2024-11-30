@@ -2,7 +2,7 @@
 
 import asyncio
 import uvicorn
-from api.application import app
+from app.api.application import app
 from core.config import get_settings
 
 def main():
