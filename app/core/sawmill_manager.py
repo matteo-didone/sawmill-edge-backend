@@ -56,18 +56,14 @@ class SawmillManager:
             # Connect to services
             if not await self.opcua_handler.connect():
                 self.logger.error("Failed to connect to OPC UA server")
-            
-            if not await self.mqtt_handler.connect():
-                self.logger.error("Failed to connect to MQTT broker")
-
-            # Start monitoring tasks
-            self.monitoring_task = asyncio.create_task(self._monitor_machine())
-            self.alarm_monitoring_task = asyncio.create_task(self.command_handler.monitor_alarms())
-
-            # Register MQTT command handler
-            await self.mqtt_client.add_topic_callback("sawmill/commands", self._handle_mqtt_command, qos=1)
-
-            self.logger.info("SawmillManager started successfully")
+            else:
+                # Add value handlers for metrics processing
+                self.opcua_client.add_value_handler("power_consumption", 
+                    lambda value: self.data_processor.update_power_consumption(value))
+                self.opcua_client.add_value_handler("cutting_speed", 
+                    lambda value: self.data_processor.update_cutting_speed(value))
+                self.opcua_client.add_value_handler("pieces_count", 
+                    lambda value: self.data_processor.update_pieces_count(value))
 
         except Exception as e:
             self.logger.error(f"Error starting SawmillManager: {e}")
