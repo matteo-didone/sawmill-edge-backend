@@ -13,7 +13,6 @@ from app.api.models import MachineCommand, AlarmNotification
 from app.core.config import get_settings
 from .data_processor import DataProcessor, ProcessedMetrics
 
-
 class SawmillManager:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
@@ -23,17 +22,18 @@ class SawmillManager:
         self.parameter_system = ParameterSystem()
         self.validator = MessageValidator()
 
-        # Initialize clients
+        # Initialize clients with retry logic
         self.opcua_client = OPCUAClient(settings.OPCUA_SERVER_URL)
         self.mqtt_client = MQTTClient(settings.MQTT_BROKER_HOST, settings.MQTT_BROKER_PORT)
         self.command_handler = CommandHandler(self.opcua_client)
-
+        
         # Initialize connection handlers
         self.opcua_handler = ConnectionHandler(
             connect_func=self.opcua_client.connect,
             disconnect_func=self.opcua_client.disconnect,
             name="OPC UA"
         )
+        
         self.mqtt_handler = ConnectionHandler(
             connect_func=self.mqtt_client.connect,
             disconnect_func=self.mqtt_client.disconnect,
@@ -41,8 +41,8 @@ class SawmillManager:
         )
 
         # Initialize the DataProcessor
-        self.data_processor = DataProcessor(window_size=3600)  # Default 1-hour window
-
+        self.data_processor = DataProcessor(window_size=3600)
+        
         # Task handles
         self.monitoring_task = None
         self.alarm_monitoring_task = None
@@ -55,16 +55,16 @@ class SawmillManager:
 
             # Connect to services
             if not await self.opcua_handler.connect():
-                raise Exception("Failed to connect to OPC UA server")
-
+                self.logger.error("Failed to connect to OPC UA server")
+            
             if not await self.mqtt_handler.connect():
-                raise Exception("Failed to connect to MQTT broker")
+                self.logger.error("Failed to connect to MQTT broker")
 
             # Start monitoring tasks
             self.monitoring_task = asyncio.create_task(self._monitor_machine())
             self.alarm_monitoring_task = asyncio.create_task(self.command_handler.monitor_alarms())
 
-            # Register the MQTT command handler and subscribe
+            # Register MQTT command handler
             await self.mqtt_client.add_topic_callback("sawmill/commands", self._handle_mqtt_command, qos=1)
 
             self.logger.info("SawmillManager started successfully")
@@ -75,7 +75,7 @@ class SawmillManager:
             raise
 
     async def stop(self):
-        """Stop all tasks and disconnect from services."""
+        """Stop all services and disconnect."""
         try:
             # Cancel monitoring tasks
             if self.monitoring_task:
@@ -83,7 +83,7 @@ class SawmillManager:
             if self.alarm_monitoring_task:
                 self.alarm_monitoring_task.cancel()
 
-            # Disconnect clients
+            # Disconnect from services
             if self.opcua_handler.is_connected:
                 await self.opcua_handler.disconnect()
             if self.mqtt_handler.is_connected:
@@ -99,22 +99,19 @@ class SawmillManager:
             try:
                 # Check connections
                 if not self.opcua_handler.is_connected:
-                    await self.opcua_handler.start_reconnection_task()
+                    await self.opcua_handler.connect()
                     await asyncio.sleep(5)
                     continue
 
                 if not self.mqtt_handler.is_connected:
-                    await self.mqtt_handler.start_reconnection_task()
+                    await self.mqtt_handler.connect()
                     await asyncio.sleep(5)
                     continue
 
-                # Update machine data
-                await self.opcua_client.update_machine_data()
-
-                # Get current status
+                # Get current status (no need to update, it's handled by subscriptions)
                 status = self.opcua_client.get_machine_status()
 
-                # Update parameter values
+                # Update parameters
                 for name, value in status.items():
                     if name in self.parameter_system.parameters:
                         validated_value = self.validator.validate_parameter_value(
@@ -123,13 +120,15 @@ class SawmillManager:
                         if validated_value is not None:
                             self.parameter_system.update_value(name, validated_value)
 
-                # Publish status via MQTT
+                # Publish status if MQTT is connected
                 if self.mqtt_handler.is_connected:
-                    await self.mqtt_client.publish(self.mqtt_client.topics["status"], status, qos=1)
-                else:
-                    self.mqtt_handler.buffer_message((self.mqtt_client.topics["status"], status))
+                    await self.mqtt_client.publish(
+                        self.mqtt_client.topics["status"], 
+                        status,
+                        qos=1
+                    )
 
-                # Check for alarms and publish if any
+                # Process alarms
                 active_alarms = self.command_handler.get_active_alarms()
                 if active_alarms and self.mqtt_handler.is_connected:
                     await self.mqtt_client.publish(
@@ -143,11 +142,10 @@ class SawmillManager:
             except Exception as e:
                 self.logger.error(f"Error in machine monitoring: {e}")
                 await asyncio.sleep(5)
-
+    
     async def _handle_mqtt_command(self, topic: str, payload: Dict[str, Any]):
         """Handle commands received via MQTT."""
         try:
-            # Validate incoming message
             validated_payload = self.validator.validate_mqtt_message(topic, payload)
             if not validated_payload:
                 return
@@ -157,7 +155,6 @@ class SawmillManager:
 
             success = await self.command_handler.execute_command(command, params)
 
-            # Publish command result
             result = {
                 "command": command.value,
                 "success": success,
@@ -165,9 +162,11 @@ class SawmillManager:
             }
 
             if self.mqtt_handler.is_connected:
-                await self.mqtt_client.publish(self.mqtt_client.topics["control"], result, qos=1)
-            else:
-                self.mqtt_handler.buffer_message((self.mqtt_client.topics["control"], result))
+                await self.mqtt_client.publish(
+                    self.mqtt_client.topics["control"],
+                    result,
+                    qos=1
+                )
 
         except Exception as e:
             self.logger.error(f"Error handling MQTT command: {e}")
@@ -178,9 +177,11 @@ class SawmillManager:
                 "timestamp": datetime.now().isoformat()
             }
             if self.mqtt_handler.is_connected:
-                await self.mqtt_client.publish(self.mqtt_client.topics["control"], error_result, qos=1)
-            else:
-                self.mqtt_handler.buffer_message((self.mqtt_client.topics["control"], error_result))
+                await self.mqtt_client.publish(
+                    self.mqtt_client.topics["control"],
+                    error_result,
+                    qos=1
+                )
 
     async def execute_command(self, command: str, params: Optional[Dict[str, Any]] = None) -> bool:
         """Execute a machine command through the API."""
@@ -191,10 +192,10 @@ class SawmillManager:
             return False
 
     def get_status(self) -> Dict[str, Any]:
-        """Get current machine status for API."""
+        """Get current machine status."""
         status = self.opcua_client.get_machine_status()
         processed_metrics = self.data_processor.get_processed_metrics()
-
+        
         status.update({
             'metrics': {
                 'average_consumption': processed_metrics.average_consumption,
@@ -209,17 +210,17 @@ class SawmillManager:
         return status
 
     def get_alarms(self) -> List[AlarmNotification]:
-        """Get active alarms for API."""
+        """Get current active alarms."""
         return self.command_handler.get_active_alarms()
 
     async def acknowledge_alarm(self, alarm_code: str) -> bool:
-        """Acknowledge an alarm through the API."""
+        """Acknowledge a specific alarm."""
         return await self.command_handler.acknowledge_alarm(alarm_code)
 
     def get_metrics(self) -> ProcessedMetrics:
-        """Get processed metrics directly."""
+        """Get current processed metrics."""
         return self.data_processor.get_processed_metrics()
 
     async def reset_metrics(self):
-        """Reset all metrics processing."""
+        """Reset all metrics calculations."""
         self.data_processor.reset()

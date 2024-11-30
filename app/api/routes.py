@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from typing import List
 from datetime import datetime
 from ..core.sawmill_manager import SawmillManager
-from .dependencies import get_sawmill_manager  # Importa da dependencies invece che da application
+from .dependencies import get_sawmill_manager
 from .models import (
     MachineStatus,
     MachineCommand,
@@ -34,6 +34,7 @@ async def execute_command(
             command_request.command,
             command_request.params
         )
+        
         return CommandResponse(
             success=success,
             timestamp=datetime.now(),
@@ -51,7 +52,7 @@ async def get_alarms(
     """Get list of active alarms."""
     return sawmill.get_alarms()
 
-@router.post("/alarms/{alarm_code}/acknowledge", response_model=CommandResponse)
+@router.post("/alarms/{alarm_code}/acknowledge")
 async def acknowledge_alarm(
     alarm_code: str,
     sawmill: SawmillManager = Depends(get_sawmill_manager)
@@ -60,19 +61,20 @@ async def acknowledge_alarm(
     success = await sawmill.acknowledge_alarm(alarm_code)
     if not success:
         raise HTTPException(status_code=404, detail=f"Alarm {alarm_code} not found")
+    
     return CommandResponse(
         success=True,
         timestamp=datetime.now(),
         message=f"Alarm {alarm_code} acknowledged"
     )
 
-# Metrics Endpoints
 @router.get("/metrics", response_model=ProcessedMetricsResponse)
 async def get_metrics(
     sawmill: SawmillManager = Depends(get_sawmill_manager)
 ):
     """Get current processed metrics."""
     metrics = sawmill.get_metrics()
+    
     return ProcessedMetricsResponse(
         average_consumption=metrics.average_consumption,
         average_cutting_speed=metrics.average_cutting_speed,
@@ -84,7 +86,7 @@ async def get_metrics(
         timestamp=datetime.now()
     )
 
-@router.post("/metrics/reset", response_model=CommandResponse)
+@router.post("/metrics/reset")
 async def reset_metrics(
     sawmill: SawmillManager = Depends(get_sawmill_manager)
 ):
@@ -96,12 +98,21 @@ async def reset_metrics(
         message="Metrics reset successfully"
     )
 
-# Config Endpoint
+@router.get("/nodes/{node_name}")
+async def read_node(
+    node_name: str,
+    sawmill: SawmillManager = Depends(get_sawmill_manager)
+):
+    """Read a specific node value."""
+    value = await sawmill.opcua_client.read_node(node_name)
+    if value is None:
+        raise HTTPException(status_code=404, detail=f"Node {node_name} not found or failed to read")
+    
+    return {"node_name": node_name, "value": value}
+
 @router.get("/config", response_model=dict)
 async def get_config(request: Request):
-    """
-    Get the current configuration of the system.
-    """
+    """Get the current configuration of the system."""
     from app.core.config import get_settings
     settings = get_settings()
     return {

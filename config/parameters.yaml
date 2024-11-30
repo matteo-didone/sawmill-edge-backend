@@ -1,0 +1,9 @@
+parameters:
+  is_active:
+    data_type: boolean
+    description: Machine active state
+    enabled: true
+    monitor: true
+    node_id: ns=1;s=SawMill/States/IsActive
+    publish: true
+    type: opcua

@@ -16,7 +16,8 @@ logging.basicConfig(level=logging.INFO)
 
 class Settings(BaseSettings):
     # OPC UA Configuration
-    OPCUA_SERVER_URL: str = os.getenv("OPCUA_SERVER_URL", "opc.tcp://localhost:4840")
+    OPCUA_SERVER_URL: str = os.getenv("OPCUA_SERVER_URL", "opc.tcp://localhost:4840/freeopcua/server/")
+    
     
     # MQTT Configuration
     MQTT_BROKER_HOST: str = "localhost"
