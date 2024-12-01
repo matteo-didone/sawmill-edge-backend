@@ -1,0 +1,24 @@
+{
+    "id": "machine-001",
+    "version": "1.0",
+    "status": "active",
+    "createdAt": "2024-12-01T00:31:49.712661",
+    "updatedAt": "2024-12-01T16:51:51.976317",
+    "bladeSpeed": 1000,
+    "feedRate": 500,
+    "cutDepth": 100,
+    "safetySettings": {
+        "tempStop": true,
+        "maxTemp": 80.0,
+        "vibrationAlert": true,
+        "maxTension": 45000.0,
+        "emergencyStopEnabled": true,
+        "safetyCheckInterval": 1000
+    },
+    "maintenance": {
+        "bladeInterval": 168,
+        "nextDate": "2024-12-01T00:31:49.712671",
+        "lastMaintenanceDate": null,
+        "maintenanceHistory": []
+    }
+}
