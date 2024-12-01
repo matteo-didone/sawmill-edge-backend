@@ -30,6 +30,58 @@ class DataProcessor:
         self.start_time = datetime.now()
         self.total_downtime = timedelta()
         self.last_active_timestamp = datetime.now()
+        
+        # Current state tracking
+        self.current_consumption = 0.0
+        self.current_speed = 0.0
+        self.current_pieces = 0
+        self.current_active = False
+        self.current_timestamp = datetime.now()
+
+    def update_power_consumption(self, value: float):
+        """Update power consumption value and recalculate metrics"""
+        self.current_consumption = float(value)
+        self.update_metrics(
+            datetime.now(),
+            self.current_consumption,
+            self.current_speed,
+            self.current_pieces,
+            self.current_active
+        )
+
+    def update_cutting_speed(self, value: float):
+        """Update cutting speed value and recalculate metrics"""
+        self.current_speed = float(value)
+        self.update_metrics(
+            datetime.now(),
+            self.current_consumption,
+            self.current_speed,
+            self.current_pieces,
+            self.current_active
+        )
+
+    def update_pieces_count(self, value: int):
+        """Update pieces count and recalculate metrics"""
+        self.current_pieces = int(value)
+        self.update_metrics(
+            datetime.now(),
+            self.current_consumption,
+            self.current_speed,
+            self.current_pieces,
+            self.current_active
+        )
+
+    def update_active_status(self, value: bool):
+        """Update active status and recalculate metrics"""
+        self.current_active = bool(value)
+        self.current_timestamp = datetime.now()
+        self.update_metrics(
+            self.current_timestamp,
+            self.current_consumption,
+            self.current_speed,
+            self.current_pieces,
+            self.current_active
+        )
 
     def _cleanup_old_data(self, current_time: datetime):
         """Remove data points older than window_size seconds"""
@@ -122,3 +174,9 @@ class DataProcessor:
         self.start_time = datetime.now()
         self.total_downtime = timedelta()
         self.last_active_timestamp = datetime.now()
+        # Reset current values
+        self.current_consumption = 0.0
+        self.current_speed = 0.0
+        self.current_pieces = 0
+        self.current_active = False
+        self.current_timestamp = datetime.now()

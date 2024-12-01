@@ -8,9 +8,11 @@ import logging
 from typing import Dict, Any
 from datetime import datetime
 
+# Load .env file
 if not load_dotenv():
     print("WARNING: Could not load .env file")
 
+# Configure logger
 logger = logging.getLogger("config")
 logging.basicConfig(level=logging.INFO)
 
@@ -19,11 +21,13 @@ class MachineConfig:
 
     @classmethod
     def ensure_config_dir(cls):
+        """Ensure the config directory exists"""
         config_path = Path(cls.CONFIG_FILE)
         config_path.parent.mkdir(exist_ok=True)
 
     @classmethod
     def get_default_config(cls) -> Dict[str, Any]:
+        """Get default machine configuration"""
         return {
             "id": "machine-001",
             "version": "1.0",
@@ -51,6 +55,7 @@ class MachineConfig:
 
     @classmethod
     def load_config(cls) -> Dict[str, Any]:
+        """Load the machine configuration from file"""
         cls.ensure_config_dir()
         config_path = Path(cls.CONFIG_FILE)
         
@@ -68,6 +73,7 @@ class MachineConfig:
 
     @classmethod
     def save_config(cls, config: Dict[str, Any]):
+        """Save the machine configuration to file"""
         cls.ensure_config_dir()
         config_path = Path(cls.CONFIG_FILE)
         
@@ -83,8 +89,8 @@ class Settings(BaseSettings):
     OPCUA_SERVER_URL: str = "opc.tcp://localhost:4840/freeopcua/server/"
     
     # MQTT Configuration
-    MQTT_BROKER_HOST: str = "localhost"
-    MQTT_BROKER_PORT: int = 1883
+    MQTT_HOST: str = "localhost"
+    MQTT_PORT: int = 1883
     MQTT_USERNAME: str = ""
     MQTT_PASSWORD: str = ""
     MQTT_CLIENT_ID: str = "sawmill_edge"
@@ -92,7 +98,7 @@ class Settings(BaseSettings):
     # API Configuration
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
-    API_PREFIX: str = "/api/v1"  # Rimosso lo slash finale
+    API_PREFIX: str = "/api/v1"
     
     # Logging Configuration
     LOG_LEVEL: str = "INFO"
@@ -101,11 +107,20 @@ class Settings(BaseSettings):
     MONITORING_INTERVAL: float = 1.0
     COMMAND_TIMEOUT: float = 5.0
 
+    @property
+    def MQTT_BROKER_HOST(self) -> str:
+        return self.MQTT_HOST
+        
+    @property
+    def MQTT_BROKER_PORT(self) -> int:
+        return self.MQTT_PORT
+
     class Config:
         env_file = ".env"
-        case_sensitive = True
+        env_file_encoding = "utf-8"
 
     async def get_full_config(self) -> Dict[str, Any]:
+        """Get the complete configuration including machine settings"""
         machine_config = MachineConfig.load_config()
         
         return {
@@ -115,11 +130,13 @@ class Settings(BaseSettings):
             "mqtt_broker_port": self.MQTT_BROKER_PORT,
             "api_host": self.API_HOST,
             "api_port": self.API_PORT,
-            "monitoring_interval": int(self.MONITORING_INTERVAL * 1000),
-            "command_timeout": int(self.COMMAND_TIMEOUT * 1000),
+            "monitoring_interval": int(self.MONITORING_INTERVAL * 1000),  # Convert to ms
+            "command_timeout": int(self.COMMAND_TIMEOUT * 1000),  # Convert to ms
         }
 
     async def update_full_config(self, config: Dict[str, Any]):
+        """Update both environment settings and machine configuration"""
+        # Update machine configuration
         machine_config = MachineConfig.load_config()
         for key, value in config.items():
             if key not in ["opcua_server_url", "mqtt_broker_host", "mqtt_broker_port", 
@@ -135,5 +152,6 @@ def get_settings() -> Settings:
     return Settings()
 
 async def update_settings(config: Dict[str, Any]):
+    """Update settings with new configuration"""
     settings = get_settings()
     await settings.update_full_config(config)

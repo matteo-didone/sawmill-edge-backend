@@ -48,8 +48,8 @@ class ConfigValidator(BaseModel):
     
     # Connection Settings
     opcua_server_url: str = Field(description="OPC UA Server URL")
-    mqtt_broker_host: str = Field(description="MQTT Broker hostname")
-    mqtt_broker_port: conint(ge=1, le=65535) = Field(description="MQTT Broker port")
+    mqtt_host: str = Field(description="MQTT Broker hostname")
+    mqtt_port: conint(ge=1, le=65535) = Field(description="MQTT Broker port")
     api_host: str = Field(description="API hostname")
     api_port: conint(ge=1, le=65535) = Field(description="API port")
     monitoring_interval: conint(ge=100, le=60000) = Field(description="Monitoring interval in ms")
@@ -86,3 +86,68 @@ class MessageValidator:
         except Exception as e:
             self.logger.error(f"Unexpected error during config validation: {e}")
             raise
+
+    def validate_parameter_value(self, name: str, value: Any, data_type: str) -> Optional[Any]:
+        """Validate a parameter value based on its expected data type"""
+        try:
+            if data_type == "boolean":
+                return bool(value)
+            elif data_type == "float":
+                return float(value)
+            elif data_type == "integer":
+                return int(value)
+            elif data_type == "string":
+                return str(value)
+            else:
+                self.logger.warning(f"Unknown data type {data_type} for parameter {name}")
+                return value
+        except (ValueError, TypeError) as e:
+            self.logger.error(f"Error validating parameter {name}: {e}")
+            return None
+
+    def validate_mqtt_message(self, topic: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Validate MQTT message payload"""
+        try:
+            # Basic validation for required fields based on topic
+            if 'command' not in payload:
+                self.logger.error("Missing 'command' field in MQTT message")
+                return None
+                
+            # Validate command format
+            if not isinstance(payload['command'], str):
+                self.logger.error("'command' must be a string")
+                return None
+                
+            # Validate params if present
+            if 'params' in payload and not isinstance(payload['params'], dict):
+                self.logger.error("'params' must be a dictionary")
+                return None
+                
+            return payload
+        except Exception as e:
+            self.logger.error(f"Error validating MQTT message: {e}")
+            return None
+
+    def sanitize_input(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Sanitize input data to prevent injection attacks"""
+        sanitized = {}
+        for key, value in data.items():
+            # Convert key to string and remove any suspicious characters
+            safe_key = str(key).replace('../', '').replace('..\\', '')
+            
+            # Recursively sanitize dictionaries
+            if isinstance(value, dict):
+                sanitized[safe_key] = self.sanitize_input(value)
+            # Handle lists
+            elif isinstance(value, list):
+                sanitized[safe_key] = [str(item).replace('../', '').replace('..\\', '')
+                                    if isinstance(item, str) else item
+                                    for item in value]
+            # Handle strings
+            elif isinstance(value, str):
+                sanitized[safe_key] = value.replace('../', '').replace('..\\', '')
+            # Keep other types as is
+            else:
+                sanitized[safe_key] = value
+                
+        return sanitized

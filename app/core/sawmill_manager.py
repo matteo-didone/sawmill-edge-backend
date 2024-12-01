@@ -24,7 +24,8 @@ class SawmillManager:
 
         # Initialize clients with retry logic
         self.opcua_client = OPCUAClient(settings.OPCUA_SERVER_URL)
-        self.mqtt_client = MQTTClient(settings.MQTT_BROKER_HOST, settings.MQTT_BROKER_PORT)
+        self.mqtt_client = MQTTClient(settings.MQTT_HOST, settings.MQTT_PORT)
+
         self.command_handler = CommandHandler(self.opcua_client)
         
         # Initialize connection handlers
@@ -43,21 +44,51 @@ class SawmillManager:
         # Initialize the DataProcessor
         self.data_processor = DataProcessor(window_size=3600)
         
-        # Task handles
+        # Task handles and state
         self.monitoring_task = None
         self.alarm_monitoring_task = None
+        self._running = False
+        self._connection_retry_delay = 5  # seconds
+        self.last_successful_monitor = datetime.now()
 
     async def start(self):
         """Initialize and start all services."""
         try:
+            self._running = True
+            
             # Load parameter configuration
             self.parameter_system.load_configuration("config/parameters.yaml")
 
+            # Start monitoring tasks
+            self.monitoring_task = asyncio.create_task(self._monitor_machine())
+            self.alarm_monitoring_task = asyncio.create_task(self._monitor_alarms())
+
             # Connect to services
-            if not await self.opcua_handler.connect():
-                self.logger.error("Failed to connect to OPC UA server")
-            else:
-                # Add value handlers for metrics processing
+            await self._establish_connections()
+
+            # Configure MQTT callbacks
+            self.mqtt_client.on_message = self._handle_mqtt_command
+
+            self.logger.info("SawmillManager started successfully")
+
+        except Exception as e:
+            self.logger.error(f"Error starting SawmillManager: {e}")
+            await self.stop()
+            raise
+
+    async def _establish_connections(self):
+        """Establish connections to OPC UA and MQTT with retry logic"""
+        retry_count = 0
+        max_retries = 5  # Increased from 3 to 5
+        backoff_time = self._connection_retry_delay
+
+        while retry_count < max_retries:
+            try:
+                # Connect to OPC UA
+                if not await self.opcua_handler.connect():
+                    raise Exception("Failed to connect to OPC UA server")
+
+                # Set up OPC UA value handlers
                 self.opcua_client.add_value_handler("power_consumption", 
                     lambda value: self.data_processor.update_power_consumption(value))
                 self.opcua_client.add_value_handler("cutting_speed", 
@@ -65,19 +96,144 @@ class SawmillManager:
                 self.opcua_client.add_value_handler("pieces_count", 
                     lambda value: self.data_processor.update_pieces_count(value))
 
-        except Exception as e:
-            self.logger.error(f"Error starting SawmillManager: {e}")
-            await self.stop()
-            raise
+                # Connect to MQTT
+                if not await self.mqtt_handler.connect():
+                    raise Exception("Failed to connect to MQTT broker")
+
+                self.logger.info("Successfully established all connections")
+                return True
+
+            except Exception as e:
+                retry_count += 1
+                self.logger.warning(
+                    f"Connection attempt {retry_count}/{max_retries} failed: {e}"
+                )
+                if retry_count < max_retries:
+                    await asyncio.sleep(backoff_time)
+                    backoff_time = min(backoff_time * 2, 60)  # Exponential backoff, max 60s
+                else:
+                    self.logger.error("Failed to establish connections after all retries")
+                    return False
+
+    async def _monitor_machine(self):
+        """Monitor machine status and publish updates with improved error handling."""
+        backoff_time = self._connection_retry_delay
+        max_backoff = 60  # Maximum backoff of 60 seconds
+        
+        while self._running:
+            try:
+                # Connection check with improved error handling
+                if not self.opcua_handler.is_connected or not self.mqtt_handler.is_connected:
+                    self.logger.warning("Connections lost, attempting to reconnect...")
+                    success = await self._establish_connections()
+                    if not success:
+                        backoff_time = min(backoff_time * 2, max_backoff)
+                        self.logger.error(f"Reconnection failed, backing off for {backoff_time}s")
+                        await asyncio.sleep(backoff_time)
+                        continue
+                    else:
+                        backoff_time = self._connection_retry_delay  # Reset backoff on success
+                        self.logger.info("Connections restored successfully")
+
+                # Get current status with timeout
+                try:
+                    async with asyncio.timeout(5):  # 5 second timeout for status retrieval
+                        status = self.opcua_client.get_machine_status()
+                        self.last_successful_monitor = datetime.now()
+                except asyncio.TimeoutError:
+                    self.logger.error("Timeout while getting machine status")
+                    await asyncio.sleep(1)
+                    continue
+
+                # Validate and process each parameter
+                processed_status = {}
+                for name, value in status.items():
+                    try:
+                        if name in self.parameter_system.parameters:
+                            validated_value = self.validator.validate_parameter_value(
+                                name, value, self.parameter_system.parameters[name].data_type
+                            )
+                            if validated_value is not None:
+                                processed_status[name] = validated_value
+                                self.parameter_system.update_value(name, validated_value)
+                    except Exception as e:
+                        self.logger.error(f"Error processing parameter {name}: {e}")
+                        continue
+
+                # Publish status if we have valid data and MQTT is connected
+                if processed_status and self.mqtt_handler.is_connected:
+                    try:
+                        async with asyncio.timeout(3):  # 3 second timeout for MQTT publish
+                            await self.mqtt_client.publish(
+                                self.mqtt_client.topics["status"], 
+                                processed_status,
+                                qos=1
+                            )
+                    except asyncio.TimeoutError:
+                        self.logger.error("Timeout while publishing to MQTT")
+                    except Exception as e:
+                        self.logger.error(f"Error publishing to MQTT: {e}")
+
+                await asyncio.sleep(1)  # Main monitoring interval
+                backoff_time = self._connection_retry_delay  # Reset backoff on successful iteration
+
+            except Exception as e:
+                self.logger.error(f"Critical error in machine monitoring: {e}")
+                await asyncio.sleep(backoff_time)
+                continue
+
+    async def _monitor_alarms(self):
+        """Monitor and publish alarms with improved error handling."""
+        backoff_time = self._connection_retry_delay
+        max_backoff = 60  # Maximum backoff of 60 seconds
+        
+        while self._running:
+            try:
+                if not self.opcua_handler.is_connected:
+                    await asyncio.sleep(1)
+                    continue
+
+                try:
+                    async with asyncio.timeout(5):  # 5 second timeout for alarm check
+                        active_alarms = self.command_handler.get_active_alarms()
+                except asyncio.TimeoutError:
+                    self.logger.error("Timeout while checking alarms")
+                    await asyncio.sleep(1)
+                    continue
+
+                if active_alarms and self.mqtt_handler.is_connected:
+                    try:
+                        async with asyncio.timeout(3):  # 3 second timeout for MQTT publish
+                            await self.mqtt_client.publish(
+                                self.mqtt_client.topics["alarm"],
+                                [alarm.dict() for alarm in active_alarms],
+                                qos=2
+                            )
+                    except asyncio.TimeoutError:
+                        self.logger.error("Timeout while publishing alarms to MQTT")
+                    except Exception as e:
+                        self.logger.error(f"Error publishing alarms to MQTT: {e}")
+
+                await asyncio.sleep(1)
+                backoff_time = self._connection_retry_delay  # Reset backoff on success
+
+            except Exception as e:
+                self.logger.error(f"Error in alarm monitoring: {e}")
+                await asyncio.sleep(backoff_time)
+                backoff_time = min(backoff_time * 2, max_backoff)
 
     async def stop(self):
         """Stop all services and disconnect."""
+        self._running = False
         try:
             # Cancel monitoring tasks
-            if self.monitoring_task:
-                self.monitoring_task.cancel()
-            if self.alarm_monitoring_task:
-                self.alarm_monitoring_task.cancel()
+            for task in [self.monitoring_task, self.alarm_monitoring_task]:
+                if task and not task.done():
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
 
             # Disconnect from services
             if self.opcua_handler.is_connected:
@@ -89,56 +245,6 @@ class SawmillManager:
         except Exception as e:
             self.logger.error(f"Error stopping SawmillManager: {e}")
 
-    async def _monitor_machine(self):
-        """Monitor machine status and publish updates."""
-        while True:
-            try:
-                # Check connections
-                if not self.opcua_handler.is_connected:
-                    await self.opcua_handler.connect()
-                    await asyncio.sleep(5)
-                    continue
-
-                if not self.mqtt_handler.is_connected:
-                    await self.mqtt_handler.connect()
-                    await asyncio.sleep(5)
-                    continue
-
-                # Get current status (no need to update, it's handled by subscriptions)
-                status = self.opcua_client.get_machine_status()
-
-                # Update parameters
-                for name, value in status.items():
-                    if name in self.parameter_system.parameters:
-                        validated_value = self.validator.validate_parameter_value(
-                            name, value, self.parameter_system.parameters[name].data_type
-                        )
-                        if validated_value is not None:
-                            self.parameter_system.update_value(name, validated_value)
-
-                # Publish status if MQTT is connected
-                if self.mqtt_handler.is_connected:
-                    await self.mqtt_client.publish(
-                        self.mqtt_client.topics["status"], 
-                        status,
-                        qos=1
-                    )
-
-                # Process alarms
-                active_alarms = self.command_handler.get_active_alarms()
-                if active_alarms and self.mqtt_handler.is_connected:
-                    await self.mqtt_client.publish(
-                        self.mqtt_client.topics["alarm"],
-                        [alarm.dict() for alarm in active_alarms],
-                        qos=2
-                    )
-
-                await asyncio.sleep(1)
-
-            except Exception as e:
-                self.logger.error(f"Error in machine monitoring: {e}")
-                await asyncio.sleep(5)
-    
     async def _handle_mqtt_command(self, topic: str, payload: Dict[str, Any]):
         """Handle commands received via MQTT."""
         try:
@@ -189,11 +295,21 @@ class SawmillManager:
 
     def get_status(self) -> Dict[str, Any]:
         """Get current machine status."""
-        status = self.opcua_client.get_machine_status()
-        processed_metrics = self.data_processor.get_processed_metrics()
-        
-        status.update({
-            'metrics': {
+        try:
+            status = self.opcua_client.get_machine_status()
+            processed_metrics = self.data_processor.get_processed_metrics()
+            
+            # Calculate time since last successful monitor
+            last_update_delta = datetime.now() - self.last_successful_monitor
+            
+            connection_status = {
+                'opcua_connected': self.opcua_handler.is_connected,
+                'mqtt_connected': self.mqtt_handler.is_connected,
+                'last_update': self.last_successful_monitor.isoformat(),
+                'last_update_seconds_ago': last_update_delta.total_seconds()
+            }
+            
+            metrics = {
                 'average_consumption': processed_metrics.average_consumption,
                 'average_cutting_speed': processed_metrics.average_cutting_speed,
                 'efficiency_rate': processed_metrics.efficiency_rate,
@@ -202,8 +318,23 @@ class SawmillManager:
                 'uptime_percentage': processed_metrics.uptime_percentage,
                 'active_time': str(processed_metrics.active_time)
             }
-        })
-        return status
+            
+            return {
+                **status,
+                'connections': connection_status,
+                'metrics': metrics
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting status: {e}")
+            return {
+                'error': str(e),
+                'connections': {
+                    'opcua_connected': self.opcua_handler.is_connected,
+                    'mqtt_connected': self.mqtt_handler.is_connected,
+                    'last_update': self.last_successful_monitor.isoformat(),
+                    'last_update_seconds_ago': (datetime.now() - self.last_successful_monitor).total_seconds()
+                }
+            }
 
     def get_alarms(self) -> List[AlarmNotification]:
         """Get current active alarms."""

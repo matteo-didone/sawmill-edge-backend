@@ -1,58 +1,52 @@
 parameters:
   is_active:
     type: "opcua"
-    node_id: "ns=1;s=SawMill/States/IsActive"
+    node_id: "ns=2;s=SawMill/States/IsActive"
     data_type: "boolean"
     description: "Machine active state"
     monitor: true
     publish: true
     enabled: true
-
   is_working:
     type: "opcua"
-    node_id: "ns=1;s=SawMill/States/IsWorking"
+    node_id: "ns=2;s=SawMill/States/IsWorking"
     data_type: "boolean"
     description: "Machine working state"
     monitor: true
     publish: true
     enabled: true
-
   cutting_speed:
     type: "opcua"
-    node_id: "ns=1;s=SawMill/Parameters/CuttingSpeed"
+    node_id: "ns=2;s=SawMill/Parameters/CuttingSpeed"
     data_type: "float"
     description: "Current cutting speed"
     unit: "m/s"
     monitor: true
     publish: true
-    
   power_consumption:
     type: "opcua"
-    node_id: "ns=1;s=SawMill/Parameters/PowerConsumption"
+    node_id: "ns=2;s=SawMill/Parameters/PowerConsumption"
     data_type: "float"
     unit: "kW"
     monitor: true
     publish: true
-    
   pieces_count:
     type: "opcua"
-    node_id: "ns=1;s=SawMill/Counters/PiecesCount"
+    node_id: "ns=2;s=SawMill/Counters/PiecesCount"
     data_type: "int"
     description: "Number of pieces processed"
     monitor: true
     publish: true
-
   has_alarm:
     type: "opcua"
-    node_id: "ns=1;s=SawMill/Alarms/HasAlarm"
+    node_id: "ns=2;s=SawMill/Alarms/HasAlarm"
     data_type: "boolean"
     description: "Alarm state"
     monitor: true
     publish: true
-
   has_error:
     type: "opcua"
-    node_id: "ns=1;s=SawMill/Alarms/HasError"
+    node_id: "ns=2;s=SawMill/Alarms/HasError"
     data_type: "boolean"
     description: "Error state"
     monitor: true

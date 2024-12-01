@@ -4,7 +4,6 @@ from typing import Dict, Any, List
 from datetime import datetime
 import logging
 import json
-
 from app.core.input_validator import ConfigValidator
 from app.core.config import update_settings, get_settings
 from ..core.sawmill_manager import SawmillManager
@@ -67,7 +66,6 @@ async def acknowledge_alarm(
     success = await sawmill.acknowledge_alarm(alarm_code)
     if not success:
         raise HTTPException(status_code=404, detail=f"Alarm {alarm_code} not found")
-    
     return CommandResponse(
         success=True,
         timestamp=datetime.now(),
@@ -97,7 +95,6 @@ async def get_config():
     try:
         settings = get_settings()
         config = await settings.get_full_config()
-        
         return JSONResponse(
             status_code=200,
             content=config
@@ -130,7 +127,7 @@ async def update_config(request: Request):
         
         # Validate configuration
         try:
-            config_validator = ConfigValidator(**config_data)
+            config_validator = ConfigValidator(config_data)
             validated_config = config_validator.dict()
             logger.info(f"Validation successful: {validated_config}")
         except Exception as e:
@@ -144,7 +141,6 @@ async def update_config(request: Request):
         try:
             await update_settings(validated_config)
             logger.info("Settings updated successfully")
-            
             return JSONResponse(
                 status_code=200,
                 content={

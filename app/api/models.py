@@ -57,8 +57,8 @@ class ConfigUpdateRequest(BaseModel):
     
     # Connection Settings
     opcua_server_url: str
-    mqtt_broker_host: str
-    mqtt_broker_port: int
+    mqtt_host: str
+    mqtt_port: int
     api_host: str
     api_port: int
     monitoring_interval: int

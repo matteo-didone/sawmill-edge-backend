@@ -74,7 +74,7 @@ class ParameterSystem:
             "parameters": {
                 "is_active": {
                     "type": "opcua",
-                    "node_id": "ns=1;s=SawMill/States/IsActive",
+                    "node_id": "ns=2;s=SawMill/States/IsActive",
                     "data_type": "boolean",
                     "description": "Machine active state",
                     "monitor": True,

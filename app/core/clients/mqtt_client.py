@@ -1,185 +1,187 @@
 import asyncio
-import paho.mqtt.client as mqtt
+from typing import Optional, Dict, Any, Callable
 import json
 import logging
-from typing import Callable, Dict, Any
-from asyncio import Queue
+from paho.mqtt import client as mqtt
 
 class MQTTClient:
-    def __init__(self, broker: str = "localhost", port: int = 1883):
-        """
-        Initialize MQTT client for sawmill communication.
-
-        Args:
-            broker: MQTT broker address
-            port: MQTT broker port
-        """
-        self.broker = broker
+    def __init__(self, host: str, port: int):
+        self.host = host
         self.port = port
         self.client = mqtt.Client()
-        self.command_queue = Queue()
+        self.connected = False
+        self.logger = logging.getLogger(__name__)
+        self._on_message_callback: Optional[Callable] = None
+        self.loop = asyncio.get_event_loop()
+        
+        # Keep alive should be longer than the status update interval
+        self.client.keepalive = 60  # 60 seconds keepalive
+        
+        # Topic configuration
+        self.topics = {
+            "status": "sawmill/machine/status",
+            "alarm": "sawmill/machine/alerts",
+            "sensors": "sawmill/sensors",
+            "control": "sawmill/machine/control",
+            "config": "sawmill/config/update"
+        }
 
-        # Setup callbacks
+        # Set MQTT callbacks
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
         self.client.on_disconnect = self._on_disconnect
 
-        # Dictionary to store topic callbacks
-        self._topic_callbacks: Dict[str, Callable] = {}
-
-        # Configure logging
-        self.logger = logging.getLogger(__name__)
-
-        # Define topics
-        self.base_topic = "sawmill"
-        self.topics = {
-            "status": f"{self.base_topic}/status",
-            "control": f"{self.base_topic}/control",
-            "data": f"{self.base_topic}/data",
-            "alarm": f"{self.base_topic}/alarm",
-            "error": f"{self.base_topic}/error"
-        }
-
-        # Connection status
-        self.connected = False
-
-        # Store the event loop reference
-        self.loop = asyncio.get_event_loop()
-
-    def _on_connect(self, client, userdata, flags, rc):
-        """Callback for when the client connects to the broker."""
-        if rc == 0:
-            self.logger.info("Connected to MQTT broker")
-            self.connected = True
-            # Subscribe to topics with registered callbacks
-            for topic in self._topic_callbacks.keys():
-                client.subscribe(topic, qos=1)
-                self.logger.info(f"Subscribed to topic on connect: {topic}")
-        else:
-            self.logger.error(f"Failed to connect to MQTT broker with code: {rc}")
-
-    def _on_message(self, client, userdata, msg):
-        """Callback for when a message is received."""
-        try:
-            payload = json.loads(msg.payload.decode())
-            topic = msg.topic
-
-            if topic == self.topics["control"]:
-                self.command_queue.put_nowait(payload)
-
-            if topic in self._topic_callbacks:
-                callback = self._topic_callbacks[topic]
-                # Schedule the callback in the event loop
-                if asyncio.iscoroutinefunction(callback):
-                    asyncio.run_coroutine_threadsafe(callback(topic, payload), self.loop)
-                else:
-                    callback(topic, payload)
-
-        except json.JSONDecodeError:
-            self.logger.error(f"Invalid JSON received on topic {msg.topic}")
-        except Exception as e:
-            self.logger.error(f"Error processing message: {e}")
-
-    def _on_disconnect(self, client, userdata, rc):
-        """Callback for when the client disconnects from the broker."""
-        self.connected = False
-        if rc != 0:
-            self.logger.warning("Unexpected disconnection from MQTT broker")
-
     async def connect(self) -> bool:
-        """Asynchronously connect to the MQTT broker."""
+        """Connect to MQTT broker"""
         try:
-            await asyncio.to_thread(self.client.connect, self.broker, self.port)
+            # Set up last will message
+            will_msg = json.dumps({"status": "disconnected"})
+            self.client.will_set(self.topics["status"], will_msg, qos=1, retain=True)
+            
+            self.client.connect(self.host, self.port)
+            
+            # Start the MQTT loop in a separate thread
             self.client.loop_start()
-
-            # Wait until connected or timeout after 10 seconds
-            try:
-                await asyncio.wait_for(self._wait_until_connected(), timeout=10)
-                return True
-            except asyncio.TimeoutError:
-                self.logger.error("MQTT connection timed out")
-                self.client.loop_stop()
-                return False
+            
+            # Wait for connection
+            for _ in range(10):  # 10 attempts, 1 second each
+                if self.connected:
+                    # Subscribe to topics
+                    for topic in self.topics.values():
+                        # For sensors topic, subscribe to all subtopics
+                        if topic == self.topics["sensors"]:
+                            self.client.subscribe(f"{topic}/#")
+                        else:
+                            self.client.subscribe(topic)
+                        self.logger.info(f"Subscribed to topic: {topic}")
+                    
+                    # Publish connected status
+                    await self.publish(self.topics["status"], 
+                                    {"status": "connected"}, 
+                                    qos=1)
+                    return True
+                await asyncio.sleep(1)
+            
+            return False
         except Exception as e:
-            self.logger.error(f"Error connecting to MQTT broker: {e}")
+            self.logger.error(f"Failed to connect to MQTT broker: {e}")
             return False
 
-    async def _wait_until_connected(self):
-        """Wait until the client is connected."""
-        while not self.connected:
-            await asyncio.sleep(0.1)
+    def _on_connect(self, client, userdata, flags, rc):
+        """Callback for when the client connects to the broker"""
+        if rc == 0:
+            self.connected = True
+            self.logger.info("Connected to MQTT broker")
+        else:
+            error_messages = {
+                1: "Incorrect protocol version",
+                2: "Invalid client identifier",
+                3: "Server unavailable",
+                4: "Bad username or password",
+                5: "Not authorized"
+            }
+            error_msg = error_messages.get(rc, f"Unknown error code: {rc}")
+            self.logger.error(f"Failed to connect to MQTT broker: {error_msg}")
+
+    def _on_disconnect(self, client, userdata, rc):
+        """Callback for when the client disconnects from the broker"""
+        self.connected = False
+        if rc == 0:
+            self.logger.info("Cleanly disconnected from MQTT broker")
+        else:
+            self.logger.warning(f"Unexpected disconnection from MQTT broker with code: {rc}")
+            # Trigger reconnection in background
+            asyncio.run_coroutine_threadsafe(self.reconnect(), self.loop)
+
+    def _on_message(self, client, userdata, message):
+        """Callback for when a message is received"""
+        try:
+            # Process only messages from subscribed topics
+            if not any(topic in message.topic for topic in self.topics.values()):
+                return
+                
+            try:
+                payload = json.loads(message.payload.decode())
+            except json.JSONDecodeError:
+                self.logger.warning(f"Received invalid JSON on topic {message.topic}")
+                return
+            
+            # Create a task in the event loop to handle the message
+            if self._on_message_callback:
+                asyncio.run_coroutine_threadsafe(
+                    self._on_message_callback(message.topic, payload),
+                    self.loop
+                )
+        except Exception as e:
+            self.logger.error(f"Error processing MQTT message: {e}")
 
     async def disconnect(self):
-        """Asynchronously disconnect from the MQTT broker."""
+        """Disconnect from MQTT broker"""
         try:
-            await asyncio.to_thread(self.client.disconnect)
+            # Publish disconnected status before disconnecting
+            await self.publish(self.topics["status"], 
+                             {"status": "disconnecting"}, 
+                             qos=1)
             self.client.loop_stop()
+            self.client.disconnect()
+            self.connected = False
         except Exception as e:
             self.logger.error(f"Error disconnecting from MQTT broker: {e}")
 
-    def publish_status(self, status: Dict[str, Any]):
-        """Publish machine status updates."""
+    async def publish(self, topic: str, payload: Dict[str, Any], qos: int = 0) -> bool:
+        """Publish message to MQTT topic"""
         try:
-            self.client.publish(
-                self.topics["status"],
-                json.dumps(status),
-                qos=1
-            )
-        except Exception as e:
-            self.logger.error(f"Error publishing status: {e}")
-
-    def publish_data(self, data: Dict[str, Any]):
-        """Publish machine data updates."""
-        try:
-            self.client.publish(
-                self.topics["data"],
-                json.dumps(data),
-                qos=1
-            )
-        except Exception as e:
-            self.logger.error(f"Error publishing data: {e}")
-
-    def publish_alarm(self, alarm: Dict[str, Any]):
-        """Publish alarm notifications."""
-        try:
-            self.client.publish(
-                self.topics["alarm"],
-                json.dumps(alarm),
-                qos=2  # Using QoS 2 for alarms
-            )
-        except Exception as e:
-            self.logger.error(f"Error publishing alarm: {e}")
-
-    async def get_next_command(self) -> Dict[str, Any]:
-        """Get the next command from the command queue."""
-        return await self.command_queue.get()
-
-    async def subscribe(self, topic: str, qos: int = 0):
-        """Asynchronously subscribe to a topic."""
-        try:
-            await asyncio.to_thread(self.client.subscribe, topic, qos)
-            self.logger.info(f"Subscribed to topic: {topic} with QoS {qos}")
-        except Exception as e:
-            self.logger.error(f"Error subscribing to topic {topic}: {e}")
-
-    async def add_topic_callback(self, topic: str, callback: Callable, qos: int = 0):
-        """Add a callback for a specific topic and subscribe to it."""
-        self._topic_callbacks[topic] = callback
-        try:
-            await self.subscribe(topic, qos)
-            self.logger.info(f"Added callback and subscribed to topic: {topic} with QoS {qos}")
-        except Exception as e:
-            self.logger.error(f"Error adding topic callback for {topic}: {e}")
-
-    async def publish(self, topic: str, message: Any, qos: int = 0):
-        """Asynchronously publish a message to a topic."""
-        try:
-            await asyncio.to_thread(
+            if not self.connected:
+                self.logger.warning("Cannot publish: not connected to MQTT broker")
+                return False
+                
+            message = json.dumps(payload)
+            result = await self.loop.run_in_executor(
+                None,
                 self.client.publish,
                 topic,
-                json.dumps(message),
+                message,
                 qos
             )
-            self.logger.info(f"Published message to topic: {topic}")
+            if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                self.logger.debug(f"Successfully published to {topic}: {message}")
+                return True
+            else:
+                self.logger.warning(f"Failed to publish to {topic}. RC: {result.rc}")
+                return False
         except Exception as e:
-            self.logger.error(f"Error publishing to topic {topic}: {e}")
+            self.logger.error(f"Error publishing to MQTT: {e}")
+            return False
+
+    @property
+    def on_message(self):
+        return self._on_message_callback
+
+    @on_message.setter
+    def on_message(self, callback: Callable):
+        self._on_message_callback = callback
+
+    async def reconnect(self):
+        """Attempt to reconnect to the broker"""
+        try:
+            if self.connected:
+                return True
+            
+            # Stop any existing loops
+            try:
+                self.client.loop_stop()
+            except:
+                pass
+            
+            # Create new client if needed
+            if self.client._sock is None:
+                self.client = mqtt.Client()
+                self.client.on_connect = self._on_connect
+                self.client.on_message = self._on_message
+                self.client.on_disconnect = self._on_disconnect
+            
+            self.logger.info("Attempting to reconnect to MQTT broker...")
+            return await self.connect()
+        except Exception as e:
+            self.logger.error(f"Error during reconnection attempt: {e}")
+            return False
