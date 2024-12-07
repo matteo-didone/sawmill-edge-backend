@@ -13,6 +13,7 @@ from app.api.models import MachineCommand, AlarmNotification
 from app.core.config import get_settings
 from .data_processor import DataProcessor, ProcessedMetrics
 
+
 class SawmillManager:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
@@ -27,14 +28,14 @@ class SawmillManager:
         self.mqtt_client = MQTTClient(settings.MQTT_HOST, settings.MQTT_PORT)
 
         self.command_handler = CommandHandler(self.opcua_client)
-        
+
         # Initialize connection handlers
         self.opcua_handler = ConnectionHandler(
             connect_func=self.opcua_client.connect,
             disconnect_func=self.opcua_client.disconnect,
             name="OPC UA"
         )
-        
+
         self.mqtt_handler = ConnectionHandler(
             connect_func=self.mqtt_client.connect,
             disconnect_func=self.mqtt_client.disconnect,
@@ -43,7 +44,7 @@ class SawmillManager:
 
         # Initialize the DataProcessor
         self.data_processor = DataProcessor(window_size=3600)
-        
+
         # Task handles and state
         self.monitoring_task = None
         self.alarm_monitoring_task = None
@@ -55,7 +56,7 @@ class SawmillManager:
         """Initialize and start all services."""
         try:
             self._running = True
-            
+
             # Load parameter configuration
             self.parameter_system.load_configuration("config/parameters.yaml")
 
@@ -89,12 +90,12 @@ class SawmillManager:
                     raise Exception("Failed to connect to OPC UA server")
 
                 # Set up OPC UA value handlers
-                self.opcua_client.add_value_handler("power_consumption", 
-                    lambda value: self.data_processor.update_power_consumption(value))
-                self.opcua_client.add_value_handler("cutting_speed", 
-                    lambda value: self.data_processor.update_cutting_speed(value))
-                self.opcua_client.add_value_handler("pieces_count", 
-                    lambda value: self.data_processor.update_pieces_count(value))
+                self.opcua_client.add_value_handler("power_consumption",
+                                                    lambda value: self.data_processor.update_power_consumption(value))
+                self.opcua_client.add_value_handler("cutting_speed",
+                                                    lambda value: self.data_processor.update_cutting_speed(value))
+                self.opcua_client.add_value_handler("pieces_count",
+                                                    lambda value: self.data_processor.update_pieces_count(value))
 
                 # Connect to MQTT
                 if not await self.mqtt_handler.connect():
@@ -119,7 +120,7 @@ class SawmillManager:
         """Monitor machine status and publish updates with improved error handling."""
         backoff_time = self._connection_retry_delay
         max_backoff = 60  # Maximum backoff of 60 seconds
-        
+
         while self._running:
             try:
                 # Connection check with improved error handling
@@ -165,7 +166,7 @@ class SawmillManager:
                     try:
                         async with asyncio.timeout(3):  # 3 second timeout for MQTT publish
                             await self.mqtt_client.publish(
-                                self.mqtt_client.topics["status"], 
+                                self.mqtt_client.topics["status"],
                                 processed_status,
                                 qos=1
                             )
@@ -186,7 +187,7 @@ class SawmillManager:
         """Monitor and publish alarms with improved error handling."""
         backoff_time = self._connection_retry_delay
         max_backoff = 60  # Maximum backoff of 60 seconds
-        
+
         while self._running:
             try:
                 if not self.opcua_handler.is_connected:
@@ -296,45 +297,35 @@ class SawmillManager:
     def get_status(self) -> Dict[str, Any]:
         """Get current machine status."""
         try:
-            status = self.opcua_client.get_machine_status()
-            processed_metrics = self.data_processor.get_processed_metrics()
-            
-            # Calculate time since last successful monitor
-            last_update_delta = datetime.now() - self.last_successful_monitor
-            
-            connection_status = {
-                'opcua_connected': self.opcua_handler.is_connected,
-                'mqtt_connected': self.mqtt_handler.is_connected,
-                'last_update': self.last_successful_monitor.isoformat(),
-                'last_update_seconds_ago': last_update_delta.total_seconds()
+            if not self.opcua_handler.is_connected:
+                return {
+                    'error': 'OPC UA not connected',
+                    'is_active': False,
+                    'is_working': False,
+                    'is_stopped': True,
+                    'has_alarm': False,
+                    'has_error': False,
+                    'cutting_speed': 0.0,
+                    'power_consumption': 0.0,
+                    'pieces_count': 0
+                }
+
+            # Ottieni i valori dal sistema dei parametri
+            status = {
+                'is_active': self.parameter_system.get_value('is_active') or False,
+                'is_working': self.parameter_system.get_value('is_working') or False,
+                'is_stopped': self.parameter_system.get_value('is_stopped') or True,
+                'has_alarm': self.parameter_system.get_value('has_alarm') or False,
+                'has_error': self.parameter_system.get_value('has_error') or False,
+                'cutting_speed': float(self.parameter_system.get_value('cutting_speed') or 0.0),
+                'power_consumption': float(self.parameter_system.get_value('power_consumption') or 0.0),
+                'pieces_count': int(self.parameter_system.get_value('pieces_count') or 0)
             }
-            
-            metrics = {
-                'average_consumption': processed_metrics.average_consumption,
-                'average_cutting_speed': processed_metrics.average_cutting_speed,
-                'efficiency_rate': processed_metrics.efficiency_rate,
-                'pieces_per_hour': processed_metrics.pieces_per_hour,
-                'total_pieces': processed_metrics.total_pieces,
-                'uptime_percentage': processed_metrics.uptime_percentage,
-                'active_time': str(processed_metrics.active_time)
-            }
-            
-            return {
-                **status,
-                'connections': connection_status,
-                'metrics': metrics
-            }
+
+            return status
         except Exception as e:
             self.logger.error(f"Error getting status: {e}")
-            return {
-                'error': str(e),
-                'connections': {
-                    'opcua_connected': self.opcua_handler.is_connected,
-                    'mqtt_connected': self.mqtt_handler.is_connected,
-                    'last_update': self.last_successful_monitor.isoformat(),
-                    'last_update_seconds_ago': (datetime.now() - self.last_successful_monitor).total_seconds()
-                }
-            }
+            raise
 
     def get_alarms(self) -> List[AlarmNotification]:
         """Get current active alarms."""
