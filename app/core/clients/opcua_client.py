@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timedelta
 from asyncua import ua
 
+
 class OPCUAClient:
     def __init__(self, url: str, reconnect_delay: int = 5):
         self.url = url
@@ -14,34 +15,29 @@ class OPCUAClient:
         self.connected = False
         self.reconnect_delay = reconnect_delay
         self.logger = logging.getLogger(__name__)
-        
+
         # Track subscription handles
         self.subscription_handles: Dict[str, int] = {}
         self.last_subscription_renewal = datetime.now()
         self.subscription_renewal_interval = timedelta(minutes=30)
-        
+
         # Track connection attempts
         self.connection_attempts = 0
         self.max_connection_attempts = 5
         self.last_connection_attempt = datetime.now()
         self.backoff_time = reconnect_delay
-        
-        # Base nodes structure (namespace index will be determined at runtime)
+
         self.base_nodes = {
-            # States folder
-            "is_active": "SawMill/States/IsActive",
-            "is_working": "SawMill/States/IsWorking", 
-            "is_stopped": "SawMill/States/IsStopped",
-            # Parameters folder
-            "cutting_speed": "SawMill/Parameters/CuttingSpeed",
-            "power_consumption": "SawMill/Parameters/PowerConsumption",
-            # Counters folder  
-            "pieces_count": "SawMill/Counters/PiecesCount",
-            # Alarms folder
-            "has_alarm": "SawMill/Alarms/HasAlarm",
-            "has_error": "SawMill/Alarms/HasError",
+            "is_active": "ns=2;s=SawMill/States/IsActive",
+            "is_working": "ns=2;s=SawMill/States/IsWorking",
+            "is_stopped": "ns=2;s=SawMill/States/IsStopped",
+            "cutting_speed": "ns=2;s=SawMill/Parameters/CuttingSpeed",
+            "power_consumption": "ns=2;s=SawMill/Parameters/PowerConsumption",
+            "pieces_count": "ns=2;s=SawMill/Counters/PiecesCount",
+            "has_alarm": "ns=2;s=SawMill/Alarms/HasAlarm",
+            "has_error": "ns=2;s=SawMill/Alarms/HasError"
         }
-        
+
         self.nodes = {}  # Will be populated with correct namespace
         self.subscribed_nodes: Dict[str, Node] = {}
         self.machine_data: Dict[str, Any] = {}
@@ -67,23 +63,18 @@ class OPCUAClient:
     async def _setup_node_ids(self):
         """Setup node ids with correct namespace index."""
         try:
-            ns_idx = await self._get_namespace_index()
+            # The nodes ids are now fully qualified in the parameters.yaml
+            # We'll just copy them directly instead of trying to construct them
             self.nodes = {}
-            
-            # Create node ids with namespace index for the entire path
             for name, path in self.base_nodes.items():
-                # Remove 'Objects/' from the start if present as it's in the root namespace
-                if path.startswith('Objects/'):
-                    node_path = path[8:]  # Remove 'Objects/'
-                    self.nodes[name] = f"ns={ns_idx};s={node_path}"
-                else:
-                    self.nodes[name] = f"ns={ns_idx};s={path}"
-            
-            self.logger.info(f"Node IDs configured with namespace index {ns_idx}")
+                # Remove the path construction and use the node_id directly from parameters
+                self.nodes[name] = path
+
+            self.logger.info(f"Node IDs configured with namespace index 2")
             # Log all node IDs for debugging
             for name, node_id in self.nodes.items():
                 self.logger.info(f"Node ID - {name}: {node_id}")
-                
+
         except Exception as e:
             self.logger.error(f"Error setting up node IDs: {e}")
             raise
@@ -109,29 +100,30 @@ class OPCUAClient:
 
         self.connection_attempts += 1
         try:
-            self.logger.info(f"Attempting connection to OPC UA server ({self.connection_attempts}/{self.max_connection_attempts})")
+            self.logger.info(
+                f"Attempting connection to OPC UA server ({self.connection_attempts}/{self.max_connection_attempts})")
             self.client = Client(url=self.url)
             self.client.session_timeout = 20000  # 20 seconds timeout
             self.client.secure_channel_timeout = 20000
-            
+
             async with asyncio.timeout(10):  # 10 seconds connection timeout
                 await self.client.connect()
-                
+
             await self._setup_node_ids()
-            
+
             test_nodes = ["is_active", "is_working", "cutting_speed"]
             for node_name in test_nodes:
                 if not await self._verify_node_exists(self.nodes[node_name]):
                     raise Exception(f"Critical node {node_name} not found on server")
-                
+
             self.connected = True
             self.connection_attempts = 0  # Reset counter on successful connection
             self.backoff_time = self.reconnect_delay  # Reset backoff
             self.logger.info("Connected to OPC UA server")
-            
+
             await self.setup_subscriptions()
             return True
-            
+
         except asyncio.TimeoutError:
             self.logger.error("Connection attempt timed out")
             await self._handle_connection_failure()
@@ -148,10 +140,10 @@ class OPCUAClient:
             self.connection_attempts = 0
             self.backoff_time = self.reconnect_delay
             return
-            
+
         self.backoff_time = min(self.backoff_time * 2, 60)
         self.last_connection_attempt = datetime.now()
-        
+
         if self.client:
             try:
                 await self.client.disconnect()
@@ -167,13 +159,13 @@ class OPCUAClient:
         """Setup subscriptions for all monitored nodes with error handling."""
         if not self.client or not self.connected:
             return
-        
+
         try:
             self.subscription = await self.client.create_subscription(
                 period=500,  # Ms between updates
                 handler=SubHandler(self)
             )
-            
+
             for node_name, node_id in self.nodes.items():
                 try:
                     async with asyncio.timeout(5):
@@ -185,10 +177,10 @@ class OPCUAClient:
                     self.logger.error(f"Timeout subscribing to node {node_name}")
                 except Exception as e:
                     self.logger.error(f"Error subscribing to node {node_name}: {e}")
-            
+
             self.last_subscription_renewal = datetime.now()
             self.logger.info(f"Successfully subscribed to {len(self.subscribed_nodes)} nodes")
-            
+
         except Exception as e:
             self.logger.error(f"Subscription setup failed: {e}")
             self.subscription = None
@@ -205,7 +197,7 @@ class OPCUAClient:
             if datetime.now() - self.last_subscription_renewal > self.subscription_renewal_interval:
                 self.logger.info("Renewing subscriptions...")
                 await self.setup_subscriptions()
-            
+
             if self.subscription.subscription_id:
                 try:
                     async with asyncio.timeout(5):
@@ -258,22 +250,15 @@ class OPCUAClient:
             self.logger.error(f"Error writing to {node_name}: {e}")
             return False
 
-    async def read_node(self, node_name: str) -> Optional[Any]:
-        """Read value from a specific node with timeout."""
-        if not self.client or not self.connected:
-            return None
-
+    async def read_node(self, node_id: str) -> Any:
         try:
-            async with asyncio.timeout(5):
-                node = self.client.get_node(self.nodes[node_name])
-                value = await node.read_value()
-                self.machine_data[node_name] = value
-                return value
-        except asyncio.TimeoutError:
-            self.logger.error(f"Timeout reading {node_name}")
-            return None
+            self.logger.debug(f"Attempting to read node: {node_id}")
+            node = self.client.get_node(node_id)
+            value = await node.read_value()
+            self.logger.debug(f"Successfully read node {node_id}: {value}")
+            return value
         except Exception as e:
-            self.logger.error(f"Error reading {node_name}: {e}")
+            self.logger.error(f"Error reading {node_id}: {str(e)}")
             return None
 
     def get_machine_status(self) -> Dict[str, Any]:
@@ -311,7 +296,7 @@ class OPCUAClient:
                     node_id = f"ns={ns_idx};s={node_path}"
                     node = self.client.get_node(node_id)
                     value = await node.read_value()
-                    
+
                     sensor_data[sensor_id] = {
                         "value": value,
                         "unit": self._get_sensor_unit(sensor_id),
@@ -365,6 +350,7 @@ class OPCUAClient:
         except Exception as e:
             self.logger.error(f"Error getting alerts: {e}")
             return []
+
 
 class SubHandler:
     def __init__(self, client: OPCUAClient):
