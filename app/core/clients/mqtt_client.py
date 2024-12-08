@@ -4,26 +4,26 @@ import json
 import logging
 from paho.mqtt import client as mqtt
 
+
 class MQTTClient:
     def __init__(self, host: str, port: int):
         self.host = host
-        self.port = port
+        self.port = int(port)  # Assicurati che la porta sia un intero
         self.client = mqtt.Client()
         self.connected = False
         self.logger = logging.getLogger(__name__)
         self._on_message_callback: Optional[Callable] = None
         self.loop = asyncio.get_event_loop()
-        
+
         # Keep alive should be longer than the status update interval
-        self.client.keepalive = 60  # 60 seconds keepalive
-        
+        self.client.keepalive = 60
+
         # Topic configuration
         self.topics = {
-            "status": "sawmill/machine/status",
-            "alarm": "sawmill/machine/alerts",
-            "sensors": "sawmill/sensors",
-            "control": "sawmill/machine/control",
-            "config": "sawmill/config/update"
+            "status": "sawmill/status",  # Semplificato il topic
+            "alarm": "sawmill/alarms",
+            "control": "sawmill/control",
+            "config": "sawmill/config"
         }
 
         # Set MQTT callbacks
@@ -32,36 +32,23 @@ class MQTTClient:
         self.client.on_disconnect = self._on_disconnect
 
     async def connect(self) -> bool:
-        """Connect to MQTT broker"""
         try:
             # Set up last will message
-            will_msg = json.dumps({"status": "disconnected"})
+            will_msg = json.dumps({"status": "offline"})
             self.client.will_set(self.topics["status"], will_msg, qos=1, retain=True)
-            
+
+            self.logger.info(f"Connecting to MQTT broker at {self.host}:{self.port}")
             self.client.connect(self.host, self.port)
-            
-            # Start the MQTT loop in a separate thread
             self.client.loop_start()
-            
+
             # Wait for connection
-            for _ in range(10):  # 10 attempts, 1 second each
+            for attempt in range(10):
                 if self.connected:
-                    # Subscribe to topics
                     for topic in self.topics.values():
-                        # For sensors topic, subscribe to all subtopics
-                        if topic == self.topics["sensors"]:
-                            self.client.subscribe(f"{topic}/#")
-                        else:
-                            self.client.subscribe(topic)
+                        self.client.subscribe(topic)
                         self.logger.info(f"Subscribed to topic: {topic}")
-                    
-                    # Publish connected status
-                    await self.publish(self.topics["status"], 
-                                    {"status": "connected"}, 
-                                    qos=1)
                     return True
                 await asyncio.sleep(1)
-            
             return False
         except Exception as e:
             self.logger.error(f"Failed to connect to MQTT broker: {e}")
@@ -96,16 +83,20 @@ class MQTTClient:
     def _on_message(self, client, userdata, message):
         """Callback for when a message is received"""
         try:
-            # Process only messages from subscribed topics
             if not any(topic in message.topic for topic in self.topics.values()):
                 return
-                
+
             try:
                 payload = json.loads(message.payload.decode())
             except json.JSONDecodeError:
                 self.logger.warning(f"Received invalid JSON on topic {message.topic}")
                 return
-            
+
+            # Solo messaggi di controllo richiedono il campo 'command'
+            if message.topic == self.topics["control"] and "command" not in payload:
+                self.logger.error("Missing 'command' field in control message")
+                return
+
             # Create a task in the event loop to handle the message
             if self._on_message_callback:
                 asyncio.run_coroutine_threadsafe(
@@ -119,9 +110,9 @@ class MQTTClient:
         """Disconnect from MQTT broker"""
         try:
             # Publish disconnected status before disconnecting
-            await self.publish(self.topics["status"], 
-                             {"status": "disconnecting"}, 
-                             qos=1)
+            await self.publish(self.topics["status"],
+                               {"status": "disconnecting"},
+                               qos=1)
             self.client.loop_stop()
             self.client.disconnect()
             self.connected = False
@@ -134,7 +125,7 @@ class MQTTClient:
             if not self.connected:
                 self.logger.warning("Cannot publish: not connected to MQTT broker")
                 return False
-                
+
             message = json.dumps(payload)
             result = await self.loop.run_in_executor(
                 None,
@@ -166,20 +157,20 @@ class MQTTClient:
         try:
             if self.connected:
                 return True
-            
+
             # Stop any existing loops
             try:
                 self.client.loop_stop()
             except:
                 pass
-            
+
             # Create new client if needed
             if self.client._sock is None:
                 self.client = mqtt.Client()
                 self.client.on_connect = self._on_connect
                 self.client.on_message = self._on_message
                 self.client.on_disconnect = self._on_disconnect
-            
+
             self.logger.info("Attempting to reconnect to MQTT broker...")
             return await self.connect()
         except Exception as e:

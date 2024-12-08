@@ -206,33 +206,36 @@ class SawmillManager:
             if not validated_payload:
                 return
 
-            command = validated_payload.get("command")
-            params = self.validator.sanitize_input(validated_payload.get("params", {}))
+            if 'command' in validated_payload:
+                command = validated_payload["command"]
+                params = self.validator.sanitize_input(validated_payload.get("params", {}))
 
-            success = await self.execute_command(command, params)
+                self.logger.info(f"Received command: {command} with params: {params}")
 
-            result = {
-                "command": command,
-                "success": success,
-                "timestamp": datetime.now().isoformat()
-            }
+                success = await self.execute_command(command, params)
 
-            if self.mqtt_handler.is_connected:
-                await self.mqtt_client.publish(
-                    "sawmill/control",
-                    result,
-                    qos=1
-                )
+                result = {
+                    "command": command,
+                    "success": success,
+                    "timestamp": datetime.now().isoformat()
+                }
+
+                if self.mqtt_handler.is_connected:
+                    await self.mqtt_client.publish(
+                        "sawmill/control",
+                        result,
+                        qos=1
+                    )
 
         except Exception as e:
             self.logger.error(f"Error handling MQTT command: {e}")
-            error_result = {
-                "command": payload.get("command"),
-                "success": False,
-                "error": str(e),
-                "timestamp": datetime.now().isoformat()
-            }
             if self.mqtt_handler.is_connected:
+                error_result = {
+                    "command": payload.get("command"),
+                    "success": False,
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat()
+                }
                 await self.mqtt_client.publish(
                     "sawmill/control",
                     error_result,

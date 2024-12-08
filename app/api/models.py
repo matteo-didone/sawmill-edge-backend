@@ -3,6 +3,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
 
+
 # Base Machine Models
 class MachineStatus(BaseModel):
     is_active: bool
@@ -14,11 +15,13 @@ class MachineStatus(BaseModel):
     power_consumption: float
     pieces_count: int
 
+
 class AlarmSeverity(str, Enum):
     INFO = "info"
     WARNING = "warning"
     ERROR = "error"
     CRITICAL = "critical"
+
 
 class AlarmNotification(BaseModel):
     code: str
@@ -27,12 +30,14 @@ class AlarmNotification(BaseModel):
     timestamp: datetime
     acknowledged: bool = False
 
+
 class MachineCommand(str, Enum):
     START = "start"
     STOP = "stop"
     EMERGENCY_STOP = "emergency_stop"
-    RESET = "reset"
+    ACKNOWLEDGE_ALARM = "acknowledge_alarm"
     UPDATE_SPEED = "update_speed"
+    RESET = "reset"
 
 # Configuration Models
 class SafetySettingsModel(BaseModel):
@@ -43,18 +48,20 @@ class SafetySettingsModel(BaseModel):
     emergencyStopEnabled: bool
     safetyCheckInterval: int
 
+
 class MaintenanceModel(BaseModel):
     bladeInterval: int
     nextDate: str
     lastMaintenanceDate: Optional[str] = None
     maintenanceHistory: List[Dict[str, Any]] = []
 
+
 class ConfigUpdateRequest(BaseModel):
     # Machine Identification
     id: Optional[str] = None
     version: str = "1.0"
     status: str = "active"
-    
+
     # Connection Settings
     opcua_server_url: str
     mqtt_host: str
@@ -63,35 +70,40 @@ class ConfigUpdateRequest(BaseModel):
     api_port: int
     monitoring_interval: int
     command_timeout: int
-    
+
     # Machine Parameters
     bladeSpeed: int
     feedRate: int
     cutDepth: int
-    
+
     # Nested Settings
     safetySettings: SafetySettingsModel
     maintenance: MaintenanceModel
-    
+
     # Metadata
     createdAt: Optional[str] = None
     updatedAt: Optional[str] = None
+
 
 # Request/Response Models
 class CommandRequest(BaseModel):
     command: str
     params: Optional[Dict[str, Any]] = None
 
+
 class CommandResponse(BaseModel):
     success: bool
     timestamp: datetime
     message: Optional[str] = None
 
+
 class AlarmAcknowledgeRequest(BaseModel):
     alarm_code: str
 
+
 class TimeWindowRequest(BaseModel):
     minutes: int = 60  # Default to last hour
+
 
 class ProcessedMetricsResponse(BaseModel):
     average_consumption: float
