@@ -1,66 +1,83 @@
 import asyncio
 from asyncua import Client
+from fastapi import FastAPI
+from pydantic import BaseModel
 
-# Funzione di connessione al server OPC-UA in base all'url inserito
-async def connectionToServer (connectionUrl):
+app = FastAPI()
 
-    endpoint = connectionUrl
+# Modello per rappresentare i comandi
+class Command(BaseModel):
+    action: str  # "start" o "stop"
 
-    # NodeId del nodo da leggere
-    #node_id = {}
+# Variabili globali
+connection_task = None
+opc_client = None
+machine_node = None
 
-    node_id = "ns=2;i=1"
+async def connection_to_server(connection_url):
+    global opc_client, machine_node
 
-    #node_id["machine_state"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "pieces"
-    #node_id["active"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "active"
-    #node_id["working"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "working"
-    #node_id["stopped"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "stopped"
-    #node_id["alarm"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "alarm"
-    #node_id["error"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "error"
-    #node_id["cutting_speed"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "cutting_speed"
-    #node_id["power_drain"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "power_drain"
-    
-    previous_value = None  # Per tenere traccia dell'ultimo valore letto
-    
+    endpoint = connection_url
+    node_id = "ns=2;i=1"  # NodeId del nodo macchina (esempio)
+
     try:
-        async with Client(url=endpoint) as client:
-            print("Connesso al server OPC-UA")
-            
-            node = client.get_node(node_id)
-            
-            while True:
-                try:
-                    # Legge il valore del nodo
-                    value = await node.read_value()
-                    
-                    # Stampa solo se il valore è cambiato
-                    if value != previous_value:
-                        print(f"Valore aggiornato del nodo '{node_id}' (pieces): {value}")
-                        previous_value = value
-                
-                except Exception as e:
-                    print(f"Errore durante la lettura del nodo: {e}")
-                
-                # Attende un breve intervallo prima di leggere di nuovo
-                await asyncio.sleep(1)
-    
+        opc_client = Client(url=endpoint)
+        await opc_client.connect()
+        print("Connesso al server OPC-UA")
+
+        machine_node = opc_client.get_node(node_id)
+
+        # Monitoraggio dello stato macchina
+        while True:
+            try:
+                value = await machine_node.read_value()
+                print(f"Valore aggiornato del nodo '{node_id}': {value}")
+            except Exception as e:
+                print(f"Errore durante la lettura del nodo: {e}")
+
+            await asyncio.sleep(1)
+
     except asyncio.CancelledError:
-        print("Esecuzione interrotta dall'utente.")
+        print("Esecuzione interrotta.")
     except Exception as e:
         print(f"Errore generico: {e}")
     finally:
-        print("Programma terminato.")
+        if opc_client:
+            await opc_client.disconnect()
+            print("Disconnesso dal server OPC-UA")
 
+@app.get("startup")
+async def startup_event():
+    global connection_task
+    connection_url = "opc.tcp://192.168.100.53:4841/freeopcua/server/"  # Modifica con il tuo endpoint
+    connection_task = asyncio.create_task(connection_to_server(connection_url))
 
-# Funzione Principale
-async def main():
-    # Endpoint del server OPC-UA
-    endpoint = "opc.tcp://192.168.100.53:4841/freeopcua/server/" 
-    asyncio.run(connectionToServer(endpoint))
+@app.get("shutdown")
+async def shutdown_event():
+    global connection_task
+    if connection_task:
+        connection_task.cancel()
+        await connection_task
 
+@app.post("/command")
+async def send_command(command: Command):
+    global machine_node
+
+    if not machine_node:
+        return {"error": "Nodo macchina non connesso"}
+
+    try:
+        if command.action == "start":
+            await machine_node.write_value(True)  # Scrive "True" per accendere
+            return {"status": "Machine started"}
+        elif command.action == "stop":
+            await machine_node.write_value(False)  # Scrive "False" per spegnere
+            return {"status": "Machine stopped"}
+        else:
+            return {"error": "Comando non riconosciuto"}
+    except Exception as e:
+        return {"error": f"Errore durante l'invio del comando: {e}"}
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("Chiusura in corso...")
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8400)
