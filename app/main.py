@@ -18,7 +18,7 @@ async def connection_to_server(connection_url):
     global opc_client, machine_node
 
     endpoint = connection_url
-    node_id = "ns=2;i=1"  # NodeId del nodo macchina (esempio)
+    node_id = "ns=3;i=1004"  # NodeId del nodo macchina (esempio)
 
     try:
         opc_client = Client(url=endpoint)
@@ -49,7 +49,7 @@ async def connection_to_server(connection_url):
 @app.get("startup")
 async def startup_event():
     global connection_task
-    connection_url = "opc.tcp://192.168.100.53:4841/freeopcua/server/"  # Modifica con il tuo endpoint
+    connection_url = "opc.tcp://Matteo:53530/OPCUA/SimulationServer"  # Modifica con il tuo endpoint
     connection_task = asyncio.create_task(connection_to_server(connection_url))
 
 @app.get("shutdown")
@@ -80,4 +80,4 @@ async def send_command(command: Command):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8400)
+    uvicorn.run(app, host="127.0.0.1", port=8000)
