@@ -1,6 +1,6 @@
 import uvicorn
 from fastapi.middleware.cors import CORSMiddleware
-from core.config import get_settings
+from config import get_settings
 from app.api.application import app
 
 def configure_cors(app):

@@ -1,7 +1,7 @@
 parameters:
   speed_limit:
     type: "opcua"
-    node_id: "ns=2;s=SpeedLimit"
+    node_id: "ns=3;i=1002"
     data_type: "float"
     description: "Maximum speed limit"
     unit: "km/h"

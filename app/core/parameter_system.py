@@ -31,10 +31,10 @@ class ParameterSystem:
         self.parameters: Dict[str, Parameter] = {}
         self.values: Dict[str, Any] = {}
 
-    def load_configuration(self, config_path: str):
+    def load_configuration(self, config_path: str = "parameters.yaml"):
         """Load parameter configuration from a YAML file."""
         try:
-            with open(config_path, 'r') as f:
+            with open("../config/parameters.yaml", 'r') as f:
                 config = yaml.safe_load(f)
 
             parameters_config = config.get("parameters", {})

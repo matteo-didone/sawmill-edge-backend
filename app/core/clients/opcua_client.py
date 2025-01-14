@@ -4,7 +4,7 @@ from typing import Dict, Any, Optional
 import logging
 
 class OPCUAClient:
-    def __init__(self, url: str):
+    def __init__(self, url: str ):
         """
         Initialize OPC UA client for sawmill communication.
         

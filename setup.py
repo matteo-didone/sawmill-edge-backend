@@ -7,7 +7,7 @@ setup(
     version="0.1.0",
     packages=find_packages(),
     install_requires=[
-        "fastapi>=0.109.0",
+        "fastapi==0.109.1",
         "uvicorn>=0.27.0",
         "asyncua>=1.0.0",
         "paho-mqtt>=1.6.0",
