@@ -5,6 +5,8 @@ from app.config.Node_Id import node_ids
 from asyncua import Client
 import asyncio
 
+from app.protocols.http_requests import send_data_to_api
+
 
 # Funzione di connessione al server OPC-UA
 async def connection_to_server(connection_url):
@@ -27,6 +29,9 @@ async def connection_to_server(connection_url):
                         if value != previous_values[key]:
                             print(f"Valore aggiornato del nodo '{key}': {value}")
                             previous_values[key] = value
+
+                            # Invio dei dati al Front-End tramite API
+                            await send_data_to_api(key, value)
 
                     except Exception as e:
                         print(f"Errore durante la lettura del nodo '{key}': {e}")

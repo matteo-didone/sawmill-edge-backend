@@ -1,10 +1,8 @@
-#Gestione importazioni librerie
+# Gestione importazioni librerie
 import asyncio
 
-#Gestione importazioni da altre pagine del programma
+# Gestione importazioni da altre pagine del programma
 from protocols.Opc_Ua import connection_to_server
-
-
 
 
 # Funzione Principale
