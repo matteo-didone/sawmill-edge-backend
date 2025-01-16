@@ -7,7 +7,7 @@ from protocols.Opc_Ua import connection_to_server
 
 # Funzione Principale
 async def main():
-    endpoint = "opc.tcp://Calcolatore:53530/OPCUA/SimulationServer"   #Inserire stringa connessione corretta
+    endpoint = "opc.tcp://127.0.0.1:4840/freeopcua/server/"   #Inserire stringa connessione corretta
     await connection_to_server(endpoint)
 
 
