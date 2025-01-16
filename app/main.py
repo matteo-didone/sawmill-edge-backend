@@ -1,9 +1,11 @@
+# Importazione di librerie esterne
 from multiprocessing import Process
 import asyncio
 
-# Importa la classe MacchinarioMQTT e la connessione OPC UA
-from protcols.Opc_Ua import connection_to_server
-from app.protcols.Mqtt import MacchinarioMQTT
+# Importazione da file interni del programma
+from protocols.Opc_Ua import connection_to_server
+from app.protocols.Mqtt import MacchinarioMQTT
+from app.config.config import endpoint
 
 def avvia_mqtt(broker_address, broker_port, topic_command, topic_status):
     # Inizializza e avvia il client MQTT
@@ -22,7 +24,6 @@ async def main():
     mqtt_process.start()
 
     # Esegui la connessione al server OPC UA
-    endpoint = "opc.tcp://Calcolatore:53530/OPCUA/SimulationServer"  # Inserire stringa connessione corretta
     await connection_to_server(endpoint)
 
     # Puoi decidere di terminare il processo MQTT al termine del programma principale

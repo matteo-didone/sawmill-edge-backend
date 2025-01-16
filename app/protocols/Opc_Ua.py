@@ -46,3 +46,23 @@ async def connection_to_server(connection_url):
         print(f"Errore generico: {e}")
     finally:
         print("Programma terminato.")
+
+        
+
+# Funzione per scrivere nei nodi
+async def write_to_node(connection_url, node_key, value):
+    try:
+        async with Client(url=connection_url) as client:
+            print("Connesso al server OPC-UA per la scrittura")
+
+            # Ottieni il nodo corrispondente
+            node = client.get_node(node_ids[node_key])
+
+            # Scrivi il valore nel nodo
+            await node.write_value(value)
+            print(f"Valore '{value}' scritto con successo nel nodo '{node_key}'")
+
+    except Exception as e:
+        print(f"Errore durante la scrittura sul nodo '{node_key}': {e}")
+    finally:
+        print("Scrittura completata.")

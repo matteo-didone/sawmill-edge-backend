@@ -1,0 +1,1 @@
+endpoint = "opc.tcp://Matteo:53530/OPCUA/SimulationServer"
