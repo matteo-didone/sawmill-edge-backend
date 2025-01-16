@@ -3,7 +3,7 @@ from multiprocessing import Process
 import asyncio
 
 # Importazione da file interni del programma
-from protocols.Opc_Ua import connection_to_server
+from protocols.Opc_Ua import connect_to_server
 from app.protocols.Mqtt import MacchinarioMQTT
 from app.config.config import endpoint
 
@@ -24,7 +24,7 @@ async def main():
     mqtt_process.start()
 
     # Esegui la connessione al server OPC UA
-    await connection_to_server(endpoint)
+    await connect_to_server(endpoint)
 
     # Puoi decidere di terminare il processo MQTT al termine del programma principale
     mqtt_process.join()

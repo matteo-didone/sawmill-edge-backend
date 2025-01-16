@@ -29,4 +29,7 @@ node_ids = {
 
 node_ids = {
     "state":                "ns=3;i=1007",
+    "cutting_speed":        "ns=3;i=1003",
+    "cut_pieces":           "ns=3;i=1001",
+    "power_consumption":    "ns=3;i=1004"
 }
