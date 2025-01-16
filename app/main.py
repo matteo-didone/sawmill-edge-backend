@@ -1,9 +1,6 @@
 import asyncio
 from asyncua import Client
 
-import tkinter as tk
-from tkinter import ttk
-
 # Funzione di connessione al server OPC-UA
 async def connection_to_server(connection_url):
     endpoint = connection_url
