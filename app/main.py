@@ -1,49 +1,66 @@
 import asyncio
 from asyncua import Client
 
-# Funzione di connessione al server OPC-UA in base all'url inserito
-async def connectionToServer (connectionUrl):
+import tkinter as tk
+from tkinter import ttk
 
-    endpoint = connectionUrl
+# Funzione di connessione al server OPC-UA
+async def connection_to_server(connection_url):
+    endpoint = connection_url
 
-    # NodeId del nodo da leggere
-    #node_id = {}
+    # Dizionario per mappare i nomi dei nodi ai rispettivi NodeId
+    node_ids = {
+        "state":                "ns=2;i=2",
+        "material":             "ns=2;i=3",
+        "dimension":            "ns=2;i=4",
+        "cutting_speed":        "ns=2;i=5",
+        "feed_rate":            "ns=2;i=6",
+        # Performace Metrics Nodes
+        "cut_pieces":           "ns=2;i=7",
+        "efficiency":           "ns=2;i=8",
+        "cutting_force":        "ns=2;i=9",
+        # Motor Parameters Nodes
+        "power_consumption":    "ns=2;i=10",
+        "motor_temperature":    "ns=2;i=11",
+        # Saw Parameters Nodes
+        "saw_temperature":      "ns=2;i=12",
+        "blade_wear":           "ns=2;i=13",
+        # Coolant System Nodes
+        "coolant_level":        "ns=2;i=14",
+        "coolant_flow":         "ns=2;i=15",
+        "coolant_temperature":  "ns=2;i=16",
+        # Safety Nodes
+        "safety_barrier":       "ns=2;i=17",
+        "anomaly_active":       "ns=2;i=18",
+        "anomaly_type":         "ns=2;i=19"
+    }
 
-    node_id = "ns=2;i=1"
+    previous_values = {key: None for key in node_ids}
 
-    #node_id["machine_state"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "pieces"
-    #node_id["active"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "active"
-    #node_id["working"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "working"
-    #node_id["stopped"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "stopped"
-    #node_id["alarm"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "alarm"
-    #node_id["error"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "error"
-    #node_id["cutting_speed"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "cutting_speed"
-    #node_id["power_drain"] = "ns=2;i=1"  # Sostituisci con il NodeId corretto per il nodo "power_drain"
-    
-    previous_value = None  # Per tenere traccia dell'ultimo valore letto
-    
     try:
         async with Client(url=endpoint) as client:
             print("Connesso al server OPC-UA")
-            
-            node = client.get_node(node_id)
-            
+
+            # Ottieni i nodi
+            nodes = {key: client.get_node(node_id) for key, node_id in node_ids.items()}
+
             while True:
-                try:
-                    # Legge il valore del nodo
-                    value = await node.read_value()
-                    
-                    # Stampa solo se il valore è cambiato
-                    if value != previous_value:
-                        print(f"Valore aggiornato del nodo '{node_id}' (pieces): {value}")
-                        previous_value = value
-                
-                except Exception as e:
-                    print(f"Errore durante la lettura del nodo: {e}")
-                
-                # Attende un breve intervallo prima di leggere di nuovo
+                for key, node in nodes.items():
+                    try:
+                        # Leggi il valore del nodo
+                        value = await node.read_value()
+
+                        # Stampa solo se il valore è cambiato
+                        if value != previous_values[key]:
+                            print(f"Valore aggiornato del nodo '{key}': {value}")
+                            previous_values[key] = value
+
+                    except Exception as e:
+                        print(f"Errore durante la lettura del nodo '{key}': {e}")
+
+                # Attende 1 secondo prima di rileggere
                 await asyncio.sleep(1)
-    
+
     except asyncio.CancelledError:
         print("Esecuzione interrotta dall'utente.")
     except Exception as e:
@@ -54,9 +71,8 @@ async def connectionToServer (connectionUrl):
 
 # Funzione Principale
 async def main():
-    # Endpoint del server OPC-UA
-    endpoint = "opc.tcp://192.168.100.53:4841/freeopcua/server/" 
-    asyncio.run(connectionToServer(endpoint))
+    endpoint = endpoint = "opc.tcp://127.0.0.1:4840/freeopcua/server/"
+    await connection_to_server(endpoint)
 
 
 if __name__ == "__main__":
