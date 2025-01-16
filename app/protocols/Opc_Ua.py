@@ -5,12 +5,9 @@ from app.config.Node_Id import node_ids
 from asyncua import Client
 import asyncio
 
+
 # Funzione di connessione al server OPC-UA
 async def connection_to_server(connection_url):
-
-
-
-
     previous_values = {key: None for key in node_ids}
 
     try:

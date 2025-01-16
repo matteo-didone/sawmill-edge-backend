@@ -2,7 +2,7 @@
 import asyncio
 
 #Gestione importazioni da altre pagine del programma
-from protcols.Opc_Ua import connection_to_server
+from protocols.Opc_Ua import connection_to_server
 
 
 
