@@ -1,3 +1,4 @@
+'''
 # Dizionario per mappare i nomi dei nodi ai rispettivi NodeId
 node_ids = {
     "state":                "ns=2;i=2",
@@ -23,4 +24,9 @@ node_ids = {
     "safety_barrier":       "ns=2;i=17",
     "anomaly_active":       "ns=2;i=18",
     "anomaly_type":         "ns=2;i=19"
+}
+'''
+
+node_ids = {
+    "state":                "ns=3;i=1002",
 }

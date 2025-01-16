@@ -1,6 +1,7 @@
 #import da altri file del programma
 from app.config.Node_Id import node_ids
 
+
 #import da librerie esterne
 from asyncua import Client
 import asyncio
@@ -25,6 +26,8 @@ async def connection_to_server(connection_url):
                     try:
                         # Leggi il valore del nodo
                         value = await node.read_value()
+
+
 
                         # Stampa solo se il valore è cambiato
                         if value != previous_values[key]:
