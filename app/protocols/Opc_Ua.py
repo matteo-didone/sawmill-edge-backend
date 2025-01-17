@@ -1,6 +1,5 @@
 # Import da altri file del programma
 from app.config.Node_Id import node_ids
-from app.protocols.http_requests import send_data_to_api
 
 # Import da librerie esterne
 from asyncua import Client, ua
@@ -34,7 +33,7 @@ async def read_nodes(connection_url):
                     valore = await nodo.read_value()
                     valori_nodi[key] = valore
                     # Invio dei dati al Front-End tramite API
-                    await send_data_to_api(key, valore)
+                    #await send_data_to_api(key, valore)
                 except Exception as e:
                     print(f"Errore durante la lettura del nodo '{key}': {e}")
                     valori_nodi[key] = None
