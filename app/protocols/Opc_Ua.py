@@ -1,13 +1,10 @@
 # Import da altri file del programma
-from asyncua.tools import uacall
-from asyncua.ua import Int32, Int16
-from six import print_
-
 from app.config.Node_Id import node_ids
+from app.protocols.http_requests import send_data_to_api
 
 # Import da librerie esterne
 from asyncua import Client, ua
-import asyncio
+
 
 # Funzione per connettersi al server OPC-UA
 async def connect_to_server(connection_url):
@@ -36,6 +33,8 @@ async def read_nodes(connection_url):
                     nodo = client.get_node(node_id)
                     valore = await nodo.read_value()
                     valori_nodi[key] = valore
+                    # Invio dei dati al Front-End tramite API
+                    await send_data_to_api(key, valore)
                 except Exception as e:
                     print(f"Errore durante la lettura del nodo '{key}': {e}")
                     valori_nodi[key] = None
