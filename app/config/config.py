@@ -1,1 +1,1 @@
-endpoint = "opc.tcp://Matteo:53530/OPCUA/SimulationServer"
+endpoint = "opc.tcp://192.168.100.121:4841/freeopcua/server/"

@@ -3,10 +3,11 @@ import json
 import asyncio
 import time
 from threading import Thread
+from turtledemo.penrose import start
 
 # Importazione pagine interne del progetto
 import paho.mqtt.client as mqtt
-from .Opc_Ua import write_to_node, read_nodes
+from .Opc_Ua import write_to_node, read_nodes, method_get
 from app.config.config import endpoint
 from app.config.Node_Id import node_ids
 
@@ -33,13 +34,31 @@ class MacchinarioMQTT:
         self.macchinario_attivo = True
         print("Macchinario avviato")
         self.client.publish(self.topic_status, "avviato")
-        asyncio.run(write_to_node(endpoint, "state", 1.0))
+        asyncio.run(method_get(endpoint, 20, 2))
 
     def arresta_macchinario(self):
         self.macchinario_attivo = False
         print("Macchinario arrestato")
         self.client.publish(self.topic_status, "arrestato")
-        asyncio.run(write_to_node(endpoint, "state", 0.0))  # Usa asyncio.run per chiamare write_to_node
+        asyncio.run(method_get(endpoint, 23, 2))
+
+    def pausa_macchinario(self):
+        self.macchinario_attivo = False
+        print("Macchinario in pausa")
+        self.client.publish(self.topic_status, "pausato")
+        asyncio.run(method_get(endpoint, 21, 2))
+
+    def manuntenzione_macchinario(self):
+        self.macchinario_attivo = True
+        print("Macchinario in manuntenzione")
+        self.client.publish(self.topic_status, "manuntentato")
+        asyncio.run(method_get(endpoint, 22, 2))
+
+    def materiali_macchinario(self):
+        self.macchinario_attivo = True
+        print("Macchinario in manuntenzione")
+        self.client.publish(self.topic_status, "manuntentato")
+        asyncio.run(method_get(endpoint, 22, 2))
 
     def invia_parametri(self):
         while True:
@@ -78,6 +97,12 @@ class MacchinarioMQTT:
             self.avvia_macchinario()
         elif comando == "arresta":
             self.arresta_macchinario()
+        elif comando == "pausa":
+            self.pausa_macchinario()
+        elif comando == "manutenzione":
+            self.manuntenzione_macchinario()
+        elif comando == "materiali":
+            self.materiali_macchinario()
         else:
             print("Comando non riconosciuto")
 

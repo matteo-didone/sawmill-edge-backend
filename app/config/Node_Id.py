@@ -1,4 +1,4 @@
-'''
+
 # Dizionario per mappare i nomi dei nodi ai rispettivi NodeId
 node_ids = {
     "state":                "ns=2;i=2",
@@ -25,11 +25,13 @@ node_ids = {
     "anomaly_active":       "ns=2;i=18",
     "anomaly_type":         "ns=2;i=19"
 }
-'''
 
+
+'''
 node_ids = {
     "state":                "ns=3;i=1007",
     "cutting_speed":        "ns=3;i=1003",
     "cut_pieces":           "ns=3;i=1001",
     "power_consumption":    "ns=3;i=1004"
 }
+'''

@@ -1,8 +1,12 @@
 # Import da altri file del programma
+from asyncua.tools import uacall
+from asyncua.ua import Int32, Int16
+from six import print_
+
 from app.config.Node_Id import node_ids
 
 # Import da librerie esterne
-from asyncua import Client
+from asyncua import Client, ua
 import asyncio
 
 # Funzione per connettersi al server OPC-UA
@@ -18,15 +22,7 @@ async def connect_to_server(connection_url):
 
 # Funzione per leggere i valori dei nodi
 async def read_nodes(connection_url):
-    """
-    Legge i valori di tutti i nodi definiti in node_ids.
 
-    Args:
-        connection_url (str): L'endpoint del server OPC UA.
-
-    Returns:
-        dict: Un dizionario con le chiavi dei nodi e i rispettivi valori letti.
-    """
     valori_nodi = {}
 
     try:
@@ -76,3 +72,15 @@ async def main(connection_url):
         finally:
             await client.disconnect()
             print("Disconnesso dal server OPC-UA.")
+
+
+from asyncua import Client
+
+
+async def method_get(connection_url, nodei, nodes,):
+    async with Client(url=connection_url) as client:
+        try:
+            await client.nodes.objects.call_method(ua.NodeId(nodei, nodes))
+
+        except Exception as e:
+            print(f"Error starting machine: {e}")
